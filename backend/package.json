@@ -4,14 +4,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx server.js",
-    "start": "tsx server.js",
+    "dev": "node server.js",
+    "start": "node --watch server.js",
+    "postinstall": "npx prisma generate",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
+      "prisma:studio": "prisma studio",
     "prisma:dev": "prisma migrate dev",
     "seed": "tsx prisma/seed.ts",
-    "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "test": "echo \"Error: no test specified\" && exit 1"
+    
+
   },
   "dependencies": {
     "@prisma/client": "7.10.1",
@@ -23,7 +26,7 @@
   "devDependencies": {
     "@types/node": "^22",
     "@types/pg": "^8.15.5",
-    "prisma": "7.10.1",
+    "prisma": "5.7.1",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"

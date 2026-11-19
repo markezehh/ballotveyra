@@ -1,19 +1,18 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  schemas  = ["ballotveyra"]
+  provider     = "postgresql"
+  url          = env("DATABASE_URL")
+  relationMode = "prisma"
 }
+
 
 enum WorkspaceRole {
   OWNER
   MANAGER
   OBSERVER
-
-  @@schema("ballotveyra")
 }
 
 enum ElectionStatus {
@@ -22,69 +21,65 @@ enum ElectionStatus {
   CLOSED
   PUBLISHED
   CANCELLED
-
-  @@schema("ballotveyra")
 }
 
 enum ResultVisibility {
   WORKSPACE
   PUBLIC
-
-  @@schema("ballotveyra")
 }
 
 model OrganizerProfile {
-  id            String             @id @default(cuid()) @db.VarChar(36)
-  email         String             @unique @db.VarChar(254)
-  firstName     String?            @db.VarChar(80)
-  lastName      String?            @db.VarChar(80)
-  passwordHash  String?            @db.VarChar(255)
-  emailVerified Boolean            @default(false)
-  createdAt     DateTime           @default(now()) @db.Timestamptz(3)
-  updatedAt     DateTime           @updatedAt @db.Timestamptz(3)
+  id            String          @id @default(cuid())
+  email         String          @unique
+  firstName     String?
+  lastName      String?
+  passwordHash  String?
+  emailVerified Boolean         @default(false)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
   memberships   WorkspaceMember[]
 
-  @@schema("ballotveyra")
+  @@map("OrganizerProfile")
 }
 
 model Workspace {
-  id        String            @id @default(cuid()) @db.VarChar(36)
-  slug      String            @unique @db.VarChar(80)
-  name      String            @db.VarChar(120)
-  createdAt DateTime          @default(now()) @db.Timestamptz(3)
+  id        String            @id @default(cuid())
+  slug      String            @unique
+  name      String
+  createdAt DateTime          @default(now())
   members   WorkspaceMember[]
   elections Election[]
   events    AuditEvent[]
 
-  @@schema("ballotveyra")
+  @@map("Workspace")
 }
 
 model WorkspaceMember {
-  workspaceId String           @db.VarChar(36)
-  organizerId String           @db.VarChar(36)
+  workspaceId String           
+  organizerId String           
   role        WorkspaceRole
   workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
   organizer   OrganizerProfile @relation(fields: [organizerId], references: [id], onDelete: Restrict)
 
   @@id([workspaceId, organizerId])
   @@index([organizerId])
-  @@schema("ballotveyra")
+  @@map("WorkspaceMember")
 }
 
 model Election {
-  id            String          @id @default(cuid()) @db.VarChar(36)
-  workspaceId   String          @db.VarChar(36)
-  slug          String          @unique @db.VarChar(80)
-  title         String          @db.VarChar(160)
+  id            String          @id @default(cuid())
+  workspaceId   String
+  slug          String          @unique
+  title         String
   description   String?
   status        ElectionStatus  @default(DRAFT)
-  timeZone      String          @default("Africa/Lagos") @db.VarChar(64)
-  opensAt       DateTime?       @db.Timestamptz(3)
-  closesAt      DateTime?       @db.Timestamptz(3)
-  endedEarlyAt  DateTime?       @db.Timestamptz(3)
+  timeZone      String          @default("Africa/Lagos")
+  opensAt       DateTime?
+  closesAt      DateTime?
+  endedEarlyAt  DateTime?
   eligibleCount Int?
-  createdAt     DateTime        @default(now()) @db.Timestamptz(3)
-  updatedAt     DateTime        @updatedAt @db.Timestamptz(3)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
   workspace     Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
   options       BallotOption[]
   voters        EligibleVoter[]
@@ -93,13 +88,13 @@ model Election {
   events        AuditEvent[]
 
   @@index([workspaceId, createdAt, id])
-  @@schema("ballotveyra")
+  @@map("Election")
 }
 
 model BallotOption {
-  id          String   @id @default(cuid()) @db.VarChar(36)
-  electionId  String   @db.VarChar(36)
-  label       String   @db.VarChar(120)
+  id          String   @id @default(cuid())
+  electionId  String
+  label       String
   description String?
   position    Int
   election    Election @relation(fields: [electionId], references: [id], onDelete: Restrict)
@@ -107,16 +102,16 @@ model BallotOption {
 
   @@unique([electionId, id])
   @@unique([electionId, position])
-  @@schema("ballotveyra")
+  @@map("BallotOption")
 }
 
 model EligibleVoter {
-  id          String   @id @default(cuid()) @db.VarChar(36)
-  electionId  String   @db.VarChar(36)
-  voterKey    String   @db.VarChar(120)
-  email       String?  @db.VarChar(254)
-  displayName String?  @db.VarChar(120)
-  tokenDigest String?  @unique @db.VarChar(64)
+  id          String   @id @default(cuid())
+  electionId  String
+  voterKey    String
+  email       String?
+  displayName String?
+  tokenDigest String?  @unique
   keyVersion  Int?
   redeemed    Boolean  @default(false)
   election    Election @relation(fields: [electionId], references: [id], onDelete: Restrict)
@@ -124,54 +119,54 @@ model EligibleVoter {
   @@unique([electionId, voterKey])
   @@unique([electionId, email])
   @@index([electionId, id])
-  @@schema("ballotveyra")
+  @@map("EligibleVoter")
 }
 
 model Ballot {
-  id         String       @id @default(cuid()) @db.VarChar(36)
-  electionId String       @db.VarChar(36)
-  optionId   String       @db.VarChar(36)
+  id         String       @id @default(cuid())
+  electionId String
+  optionId   String
   option     BallotOption @relation(fields: [electionId, optionId], references: [electionId, id], onDelete: Restrict)
 
   @@index([electionId, optionId])
-  @@schema("ballotveyra")
+  @@map("Ballot")
 }
 
 model ImportBatch {
-  electionId String   @db.VarChar(36)
-  batchKey   String   @default(cuid()) @db.VarChar(36)
-  digest     String   @db.VarChar(64)
+  electionId String
+  batchKey   String   @default(cuid())
+  digest     String
   summary    Json
-  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  createdAt  DateTime @default(now())
   election   Election @relation(fields: [electionId], references: [id], onDelete: Restrict)
 
   @@id([electionId, batchKey])
-  @@schema("ballotveyra")
+  @@map("ImportBatch")
 }
 
 model ResultSnapshot {
-  electionId  String           @id @db.VarChar(36)
+  electionId  String           @id
   visibility  ResultVisibility @default(WORKSPACE)
   tally       Json
-  publishedAt DateTime         @default(now()) @db.Timestamptz(3)
-  publishedBy String           @db.VarChar(36)
+  publishedAt DateTime         @default(now())
+  publishedBy String
   election    Election         @relation(fields: [electionId], references: [id], onDelete: Restrict)
 
-  @@schema("ballotveyra")
+  @@map("ResultSnapshot")
 }
 
 model AuditEvent {
-  id          String     @id @default(cuid()) @db.VarChar(36)
-  workspaceId String     @db.VarChar(36)
-  electionId  String?    @db.VarChar(36)
-  actorId     String     @db.VarChar(36)
-  action      String     @db.VarChar(60)
+  id          String     @id @default(cuid())
+  workspaceId String
+  electionId  String?
+  actorId     String
+  action      String
   metadata    Json?
-  createdAt   DateTime   @default(now()) @db.Timestamptz(3)
+  createdAt   DateTime   @default(now())
   workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
   election    Election?  @relation(fields: [electionId], references: [id], onDelete: Restrict)
 
   @@index([workspaceId, createdAt, id])
   @@index([electionId, createdAt, id])
-  @@schema("ballotveyra")
+  @@map("AuditEvent")
 }
