@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+:root {
+  --navy: #10243f;
+  --navy-deep: #091827;
+  --teal: #1aa79a;
+  --teal-dark: #13877d;
+  --mist: #edf4f3;
+  --paper: #fbfcfa;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--navy);
+  font-family: var(--font-geist-sans), Arial, sans-serif;
+}
+
+::selection { background: #bce6df; color: var(--navy-deep); }
+
+:focus-visible {
+  outline: 3px solid #68d4c7;
+  outline-offset: 3px;
+}
+
+.grid-fade {
+  background-image:
+    linear-gradient(rgba(16,36,63,.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(16,36,63,.055) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: linear-gradient(to bottom, black 20%, transparent 92%);
+}
+
+.hero-glow {
+  background:
+    radial-gradient(circle at 78% 32%, rgba(67,194,176,.16), transparent 22%),
+    radial-gradient(circle at 10% 70%, rgba(32,156,145,.08), transparent 22%);
+}
+
+.ballot-shadow { box-shadow: 0 24px 70px rgba(9,24,39,.13), 0 4px 16px rgba(9,24,39,.08); }
+
+
+@keyframes moveFirst {
+  0%{opacity: 0;transform: translate(-400);}
+  100%{opacity: 1;transform: translate(0);}
+  
+}
+
+.firstOption{
+  opacity: 0;
+  animation: moveFirst 2s ease forwards;
+}
+
+@keyframes moveSecond {
+  0%{opacity: 0;transform: translate(-400);}
+  100%{opacity: 1;transform: translate(0);}
+  
+}
+
+.secondOption{
+  opacity: 0;
+  animation: moveFirst 2s ease 2.2s forwards;
+}
+
+@keyframes moveThird {
+  0%{opacity: 0;transform: translate(-400);}
+  100%{opacity: 1;transform: translate(0);}
+  
+}
+
+.thirdOption{
+  opacity: 0;
+  animation: moveFirst 2s ease 4.2s forwards;
+}
