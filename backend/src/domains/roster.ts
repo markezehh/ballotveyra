@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { prisma } from "../db.js";
 import { ApiError } from "../errors.js";
 
@@ -45,7 +45,6 @@ export async function importRosterBatch(electionId: string, batchKey: string, ro
 
     await tx.eligibleVoter.createMany({
       data: rows.map((row) => ({
-        id: randomUUID(),
         electionId,
         voterKey: row.voter_key.normalize("NFKC").trim().toLocaleLowerCase(),
         email: row.email ? row.email.normalize("NFKC").trim().toLocaleLowerCase() : null,

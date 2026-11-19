@@ -22,7 +22,7 @@ export async function createDraft(identity: AuthIdentity, input: unknown) {
       },
     });
     await tx.auditEvent.create({
-      data: { id: randomUUID(), workspaceId: parsed.workspaceId, electionId: election.id, actorId: identity.id, action: "election.draft_created", metadata: { draftId: election.id } },
+      data: { workspaceId: parsed.workspaceId, electionId: election.id, actorId: identity.id, action: "election.draft_created", metadata: { draftId: election.id } },
     });
     return election;
   });
@@ -44,9 +44,9 @@ export async function replaceOptions(electionId: string, identity: AuthIdentity,
     await tx.ballotOption.deleteMany({ where: { electionId } });
     await tx.ballotOption.createMany({
       data: options.map((option, position) => ({
-        id: randomUUID(), electionId, position, label: option.label.trim(), description: option.description?.trim() || null,
+        electionId, position, label: option.label.trim(), description: option.description?.trim() || null,
       })),
     });
-    await tx.auditEvent.create({ data: { id: randomUUID(), workspaceId: election.workspaceId, electionId, actorId: identity.id, action: "election.options_replaced", metadata: { optionCount: options.length } } });
+    await tx.auditEvent.create({ data: { workspaceId: election.workspaceId, electionId, actorId: identity.id, action: "election.options_replaced", metadata: { optionCount: options.length } } });
   });
 }

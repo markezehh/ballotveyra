@@ -1,6 +1,5 @@
 import { randomBytes, scrypt as scryptCallback, timingSafeEqual, createHmac } from "node:crypto";
 import { promisify } from "node:util";
-import { randomUUID } from "node:crypto";
 import { prisma } from "./db.js";
 import { ApiError } from "./errors.js";
 
@@ -43,7 +42,7 @@ export async function registerAccount(input: { firstName: string; lastName: stri
   if (existing) throw new ApiError(409, "CONFLICT", "An account with this email already exists");
 
   const account = await prisma.organizerProfile.create({
-    data: { id: randomUUID(), email, firstName, lastName, passwordHash, emailVerified: true },
+    data: { email, firstName, lastName, passwordHash, emailVerified: true },
   });
   return account;
 }
