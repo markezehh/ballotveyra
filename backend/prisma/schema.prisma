@@ -34,9 +34,15 @@ enum ResultVisibility {
 }
 
 model OrganizerProfile {
-  id          String             @id @db.Uuid
-  email       String             @unique @db.VarChar(254)
-  memberships WorkspaceMember[]
+  id            String             @id @db.Uuid
+  email         String             @unique @db.VarChar(254)
+  firstName     String?            @db.VarChar(80)
+  lastName      String?            @db.VarChar(80)
+  passwordHash  String?            @db.VarChar(255)
+  emailVerified Boolean            @default(false)
+  createdAt     DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime           @updatedAt @db.Timestamptz(3)
+  memberships   WorkspaceMember[]
 
   @@schema("ballotveyra")
 }
