@@ -1,20 +1,11 @@
-import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "./generated/prisma/client.js";
-
-const connectionString = process.env.DATABASE_URL;
+import { PrismaClient } from "./generated/prisma/index.js";
 
 export function createPrismaClient() {
-  if (!connectionString) {
+  if (!process.env.DATABASE_URL) {
     throw new Error("DATABASE_URL is not configured");
   }
 
-  const poolMax = Number(process.env.DATABASE_POOL_MAX ?? "10");
-  const adapter = new PrismaPg({
-    connectionString,
-    max: Number.isFinite(poolMax) && poolMax > 0 ? poolMax : 10,
-  }, { schema: "ballotveyra" });
-
-  return new PrismaClient({ adapter });
+  return new PrismaClient();
 }
 
 const globalForPrisma = globalThis as unknown as { ballotveyraPrisma?: PrismaClient };
