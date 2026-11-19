@@ -3,13 +3,23 @@ import { createServer } from "node:http";
 
 const host = process.env.HOST ?? "0.0.0.0";
 const port = Number(process.env.PORT ?? "3001");
-const allowedOrigin = process.env.APP_ORIGIN ?? "http://localhost:3000";
+const allowedOrigins = [
+  process.env.APP_ORIGIN,
+  "http://localhost:3000",
+  "https://ballotveyra.vercel.app",
+  "https://ballotveyra.com",
+].filter((origin) => typeof origin === "string");
+
+const getAllowedOrigin = (req) =>
+  typeof req.headers.origin === "string" && allowedOrigins.includes(req.headers.origin)
+    ? req.headers.origin
+    : "";
 
 const json = (req, res, statusCode, body, extraHeaders = {}) => {
   const headers = {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
-    "Access-Control-Allow-Origin": req.headers.origin === allowedOrigin ? allowedOrigin : "",
+    "Access-Control-Allow-Origin": getAllowedOrigin(req),
     "Access-Control-Allow-Credentials": "true",
     "Vary": "Origin",
     ...extraHeaders,
@@ -74,7 +84,7 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "OPTIONS") {
     res.writeHead(204, {
-      "Access-Control-Allow-Origin": req.headers.origin === allowedOrigin ? allowedOrigin : "",
+      "Access-Control-Allow-Origin": getAllowedOrigin(req),
       "Access-Control-Allow-Credentials": "true",
       "Access-Control-Allow-Headers": "Content-Type",
       "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
