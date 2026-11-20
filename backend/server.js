@@ -40,6 +40,8 @@ async function authResponse(req, res, operation) {
   try {
     const auth = await import("./src/auth.js");
 
+    console.log(`auth request: ${req.method} ${req.path} operation=${operation}`);
+
     if (operation === "register") {
       const account = await auth.registerAccount(req.body);
       res.setHeader("Set-Cookie", auth.createSessionCookie(account));
@@ -69,10 +71,21 @@ async function authResponse(req, res, operation) {
       res.status(200).json({ ok: true });
     }
   } catch (error) {
+    console.error(`auth request failed: operation=${operation} error=${error instanceof Error ? error.name : typeof error} message=${error instanceof Error ? error.message : String(error)}`);
     const { toErrorResponse } = await import("./src/errors.js");
     const response = toErrorResponse(error);
     res.status(response.status).json(response.body);
   }
+}
+
+const missingEnv = [];
+if (!process.env.DATABASE_URL) missingEnv.push("DATABASE_URL");
+if (!process.env.VOTER_SESSION_SECRET || process.env.VOTER_SESSION_SECRET.length < 32) {
+  missingEnv.push("VOTER_SESSION_SECRET (at least 32 characters)");
+}
+if (missingEnv.length > 0) {
+  console.error(`Startup configuration error: missing or invalid ${missingEnv.join(", ")}`);
+  process.exit(1);
 }
 
 app.disable("x-powered-by");
