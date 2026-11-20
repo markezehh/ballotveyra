@@ -22,24 +22,30 @@ function ArrowIcon() {
 }
 
 export default function Home() {
+  const showRef = useRef<HTMLDivElement>(null)
+  const [isShowing, setIsShowing] = useState(false)
 
-  const showRef = useRef(null)
-  const[isShowing,setIsShowing]= useState(false)
-  const myObserver = new IntersectionObserver((entries,observer)=>{
-    entries.forEach(entry=>{
-      if(entry.isIntersecting){
-setIsShowing(true)
-      }
+  useEffect(() => {
+    const element = showRef.current
 
-      else setIsShowing(false)
-    })
-  },{threshold:1})
+    if (!element || typeof IntersectionObserver === "undefined") {
+      return
+    }
 
-  useEffect(()=>{
-    if(showRef.current){
-    myObserver.observe(showRef.current)}
-  return ()=>{ if(showRef.current){myObserver.unobserve(showRef.current)}}
-  },[])
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          setIsShowing(true)
+          observer.unobserve(entry.target)
+        }
+      })
+    }, { threshold: 0.25 })
+
+    observer.observe(element)
+
+    return () => observer.disconnect()
+  }, [])
+
   return (
     <div className="min-h-screen overflow-hidden bg-[#fbfcfa]">
       <header className="relative z-20 border-b border-[#10243f]/8 bg-[#fbfcfa]/95">
