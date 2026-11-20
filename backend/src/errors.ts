@@ -8,13 +8,21 @@ export type ApiErrorCode =
   | "TEMPORARY_ERROR";
 
 export class ApiError extends Error {
+  readonly status: number;
+  readonly code: ApiErrorCode;
+  readonly fieldErrors?: Record<string, string[]>;
+
   constructor(
-    public readonly status: number,
-    public readonly code: ApiErrorCode,
+    status: number,
+    code: ApiErrorCode,
     message: string,
-    public readonly fieldErrors?: Record<string, string[]>,
+    fieldErrors?: Record<string, string[]>,
   ) {
     super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = code;
+    this.fieldErrors = fieldErrors;
   }
 }
 

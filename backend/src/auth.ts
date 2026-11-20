@@ -1,7 +1,7 @@
 import { randomBytes, scrypt as scryptCallback, timingSafeEqual, createHmac } from "node:crypto";
 import { promisify } from "node:util";
-import { prisma } from "./db.ts";
-import { ApiError } from "./errors.ts";
+import { prisma } from "./db.js";
+import { ApiError } from "./errors.js";
 
 const scrypt = promisify(scryptCallback);
 const SESSION_COOKIE = "ballotveyra_session";

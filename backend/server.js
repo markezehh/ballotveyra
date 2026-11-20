@@ -62,7 +62,7 @@ async function readJson(req) {
 async function authResponse(req, res, operation) {
   try {
     const body = await readJson(req);
-    const auth = await import("./src/auth.ts");
+    const auth = await import("./dist/src/auth.js");
 
     if (operation === "register") {
       const account = await auth.registerAccount(body);
@@ -94,7 +94,7 @@ async function authResponse(req, res, operation) {
       json(req, res, 200, { ok: true }, { "Set-Cookie": auth.clearSessionCookie() });
     }
   } catch (error) {
-    const { toErrorResponse } = await import("./src/errors.ts");
+    const { toErrorResponse } = await import("./dist/src/errors.js");
     const response = toErrorResponse(error);
     json(req, res, response.status, response.body);
   }
@@ -117,7 +117,7 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "GET" && (url.pathname === "/health" || url.pathname === "/api/health")) {
     try {
-      const { healthCheck } = await import("./src/health.ts");
+      const { healthCheck } = await import("./dist/src/health.js");
       const result = await healthCheck();
       json(req, res, result.status === "ok" ? 200 : 503, result);
     } catch (error) {
@@ -150,7 +150,7 @@ async function shutdown(signal) {
   console.log(`Received ${signal}; shutting down`);
   server.close(async () => {
     try {
-      const { prisma } = await import("./src/db.ts");
+      const { prisma } = await import("./dist/src/db.js");
       await prisma.$disconnect();
     } catch {
       // The database module may not have been initialized.

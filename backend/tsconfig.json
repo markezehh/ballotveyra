@@ -10,8 +10,8 @@
     "resolveJsonModule": true,
     "types": ["node"],
     "outDir": "dist",
-    "noEmit": true,
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": false,
+    "noEmit": false
   },
   "include": ["src/**/*.ts", "prisma/**/*.ts", "tests/**/*.ts"]
 }
