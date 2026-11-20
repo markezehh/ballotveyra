@@ -11,6 +11,7 @@ function apiError(status, code, message) {
   error.status = status;
   error.code = code;
   return error;
+  
 }
 
 export function createPasswordResetToken(account) {
