@@ -165,32 +165,6 @@ app.get("/", (req, res) => {
   res.status(200).json({ name: "BallotVeyra API", status: "running" });
 });
 
-app.use((req, res) => {
-  res.status(404).json({ error: "Not found" });
-});
-
-const server = createServer(app);
-
-server.listen(port, host, () => {
-  console.log(`BallotVeyra backend listening on http://${host}:${port}`);
-});
-
-async function shutdown(signal) {
-  console.log(`Received ${signal}; shutting down`);
-  server.close(async () => {
-    try {
-      const { prisma } = await import("./src/db.js");
-      await prisma.$disconnect();
-    } catch {
-      // The database module may not have been initialized.
-    }
-    process.exit(0);
-  });
-}
-
-process.on("SIGINT", () => void shutdown("SIGINT"));
-process.on("SIGTERM", () => void shutdown("SIGTERM"));
-
 app.use((req, res, next) => {
   if (req.method === "OPTIONS") {
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -418,4 +392,12 @@ app.get("/api/elections/:id/results", async (req, res) => {
     const response = toErrorResponse(error);
     res.status(response.status).json(response.body);
   }
+});
+
+app.use((req, res) => {
+  res.status(404).json({ error: "Not found" });
+});
+
+createServer(app).listen(port, host, () => {
+  console.log(`Server running at http://${host}:${port}/`);
 });
