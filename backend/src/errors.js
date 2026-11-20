@@ -21,6 +21,17 @@ export function toErrorResponse(error, requestId) {
     };
   }
 
+  if (error instanceof Error && Number.isInteger(error.status) && error.code) {
+    return {
+      status: error.status,
+      body: {
+        code: error.code,
+        message: error.message,
+        ...(requestId ? { requestId } : {}),
+      },
+    };
+  }
+
   return {
     status: 503,
     body: {

@@ -137,6 +137,30 @@ app.post("/api/auth/login", (req, res) => void authResponse(req, res, "login"));
 app.get("/api/auth/me", (req, res) => void authResponse(req, res, "me"));
 app.post("/api/auth/logout", (req, res) => void authResponse(req, res, "logout"));
 
+app.post("/api/auth/forgot-password", async (req, res) => {
+  try {
+    const { requestPasswordReset } = await import("./src/services/auth.service.js");
+    const result = await requestPasswordReset(req.body?.email);
+    res.status(200).json(result);
+  } catch (error) {
+    const { toErrorResponse } = await import("./src/errors.js");
+    const response = toErrorResponse(error);
+    res.status(response.status).json(response.body);
+  }
+});
+
+app.post("/api/auth/reset-password", async (req, res) => {
+  try {
+    const { resetPassword } = await import("./src/services/auth.service.js");
+    const result = await resetPassword(req.body?.token, req.body?.password, req.body?.confirmPassword);
+    res.status(200).json(result);
+  } catch (error) {
+    const { toErrorResponse } = await import("./src/errors.js");
+    const response = toErrorResponse(error);
+    res.status(response.status).json(response.body);
+  }
+});
+
 app.get("/", (req, res) => {
   res.status(200).json({ name: "BallotVeyra API", status: "running" });
 });
@@ -221,14 +245,9 @@ app.get("/api/workspaces", async (req, res) => {
   try {
     const account = await requireAccount(req, res);
     if (!account) return;
-    const workspace = await ensurePersonalWorkspace(account);
-    const { prisma } = await import("./src/db.js");
-    const memberships = await prisma.workspaceMember.findMany({
-      where: { organizerId: account.id },
-      include: { workspace: true },
-      orderBy: { workspace: { createdAt: "asc" } },
-    });
-    res.json({ workspaces: memberships.map((item) => ({ ...item.workspace, role: item.role })) });
+    const { listWorkspaces } = await import("./src/services/workspace.service.js");
+    const workspaces = await listWorkspaces(account.id);
+    res.json({ workspaces });
   } catch (error) {
     const { toErrorResponse } = await import("./src/errors.js");
     const response = toErrorResponse(error);
@@ -240,18 +259,8 @@ app.post("/api/workspaces", async (req, res) => {
   try {
     const account = await requireAccount(req, res);
     if (!account) return;
-    const name = String(req.body?.name ?? "").trim();
-    const slug = String(req.body?.slug ?? "").trim().toLowerCase();
-    if (name.length < 2 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
-      res.status(422).json({ code: "VALIDATION_ERROR", message: "A valid workspace name and slug are required" });
-      return;
-    }
-    const { prisma } = await import("./src/db.js");
-    const workspace = await prisma.$transaction(async (tx) => {
-      const created = await tx.workspace.create({ data: { name, slug } });
-      await tx.workspaceMember.create({ data: { workspaceId: created.id, organizerId: account.id, role: "OWNER" } });
-      return created;
-    });
+    const { createWorkspace } = await import("./src/services/workspace.service.js");
+    const workspace = await createWorkspace(account.id, req.body);
     res.status(201).json({ workspace });
   } catch (error) {
     const { toErrorResponse } = await import("./src/errors.js");
@@ -264,21 +273,9 @@ app.get("/api/elections", async (req, res) => {
   try {
     const account = await requireAccount(req, res);
     if (!account) return;
-    const { prisma } = await import("./src/db.js");
-    const memberships = await prisma.workspaceMember.findMany({ where: { organizerId: account.id }, select: { workspaceId: true } });
-    const workspaceIds = memberships.map((item) => item.workspaceId);
-    const elections = await prisma.election.findMany({
-      where: { workspaceId: { in: workspaceIds } },
-      include: { options: true, voters: true, _count: { select: { ballots: true } } },
-      orderBy: { createdAt: "desc" },
-    });
-    res.json({ elections: elections.map((election) => ({
-      ...election,
-      statusLabel: electionStatus(election),
-      ballotsCast: election._count.ballots,
-      eligibleCount: election.eligibleCount ?? election.voters.length,
-      options: election.options,
-    })) });
+    const { listElections } = await import("./src/services/election.service.js");
+    const elections = await listElections(account.id);
+    res.json({ elections });
   } catch (error) {
     const { toErrorResponse } = await import("./src/errors.js");
     const response = toErrorResponse(error);
@@ -290,47 +287,13 @@ app.post("/api/elections", async (req, res) => {
   try {
     const account = await requireAccount(req, res);
     if (!account) return;
-    const { prisma } = await import("./src/db.js");
+    const { ensurePersonalWorkspace } = await import("./src/services/workspace.service.js");
+    const { createElection } = await import("./src/services/election.service.js");
     const workspace = req.body?.workspaceId
-      ? await prisma.workspace.findUnique({ where: { id: req.body.workspaceId } })
+      ? { id: req.body.workspaceId }
       : await ensurePersonalWorkspace(account);
-    if (!workspace) {
-      res.status(404).json({ code: "NOT_FOUND", message: "Workspace not found" });
-      return;
-    }
-    const membership = await prisma.workspaceMember.findUnique({ where: { workspaceId_organizerId: { workspaceId: workspace.id, organizerId: account.id } } });
-    if (!membership || !["OWNER", "MANAGER"].includes(membership.role)) {
-      res.status(403).json({ code: "FORBIDDEN", message: "You do not have permission for this action" });
-      return;
-    }
-    const title = String(req.body?.title ?? "").trim();
-    const description = String(req.body?.description ?? "").trim() || null;
-    const timeZone = String(req.body?.timeZone ?? "Africa/Lagos").trim();
-    const opensAt = req.body?.opensAt ? new Date(req.body.opensAt) : null;
-    const closesAt = req.body?.closesAt ? new Date(req.body.closesAt) : null;
-    const options = Array.isArray(req.body?.options) ? req.body.options : [];
-    if (title.length < 2 || title.length > 160) {
-      res.status(422).json({ code: "VALIDATION_ERROR", message: "Election title must be 2–160 characters" });
-      return;
-    }
-    if (opensAt && closesAt && closesAt <= opensAt) {
-      res.status(422).json({ code: "VALIDATION_ERROR", message: "Closing time must be after opening time" });
-      return;
-    }
-    if (options.length && (options.length < 2 || options.length > 50)) {
-      res.status(422).json({ code: "VALIDATION_ERROR", message: "A ballot requires 2 to 50 options" });
-      return;
-    }
-    const slug = `${title.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}-${randomUUID().slice(0, 8)}`;
-    const election = await prisma.$transaction(async (tx) => {
-      const created = await tx.election.create({ data: { workspaceId: workspace.id, slug, title, description, timeZone, opensAt, closesAt } });
-      if (options.length) {
-        await tx.ballotOption.createMany({ data: options.map((label, position) => ({ electionId: created.id, position, label: String(label).trim() })) });
-      }
-      await tx.auditEvent.create({ data: { workspaceId: workspace.id, electionId: created.id, actorId: account.id, action: "election.draft_created", metadata: { draftId: created.id } } });
-      return tx.election.findUnique({ where: { id: created.id }, include: { options: true, voters: true, _count: { select: { ballots: true } } } });
-    });
-    res.status(201).json({ election: { ...election, statusLabel: electionStatus(election), ballotsCast: election._count.ballots, eligibleCount: election.eligibleCount ?? election.voters.length } });
+    const election = await createElection(account.id, workspace.id, req.body);
+    res.status(201).json({ election });
   } catch (error) {
     const { toErrorResponse } = await import("./src/errors.js");
     const response = toErrorResponse(error);
@@ -342,16 +305,9 @@ app.get("/api/elections/:id", async (req, res) => {
   try {
     const account = await requireAccount(req, res);
     if (!account) return;
-    const { prisma } = await import("./src/db.js");
-    const election = await prisma.election.findFirst({
-      where: { id: req.params.id, workspace: { members: { some: { organizerId: account.id } } } },
-      include: { workspace: true, options: { orderBy: { position: "asc" } }, voters: true, result: true, _count: { select: { ballots: true } } },
-    });
-    if (!election) {
-      res.status(404).json({ code: "NOT_FOUND", message: "Election not found" });
-      return;
-    }
-    res.json({ election: { ...election, statusLabel: electionStatus(election), ballotsCast: election._count.ballots, eligibleCount: election.eligibleCount ?? election.voters.length } });
+    const { getElection } = await import("./src/services/election.service.js");
+    const election = await getElection(req.params.id, account.id);
+    res.json({ election });
   } catch (error) {
     const { toErrorResponse } = await import("./src/errors.js");
     const response = toErrorResponse(error);
@@ -363,21 +319,10 @@ app.post("/api/elections/:id/options", async (req, res) => {
   try {
     const account = await requireAccount(req, res);
     if (!account) return;
-    const { prisma } = await import("./src/db.js");
-    const election = await prisma.election.findUnique({ where: { id: req.params.id }, include: { options: true } });
-    if (!election) return res.status(404).json({ code: "NOT_FOUND", message: "Election not found" });
-    const membership = await prisma.workspaceMember.findUnique({ where: { workspaceId_organizerId: { workspaceId: election.workspaceId, organizerId: account.id } } });
-    if (!membership || !["OWNER", "MANAGER"].includes(membership.role)) return res.status(403).json({ code: "FORBIDDEN", message: "You do not have permission for this action" });
-    if (election.status !== "DRAFT") return res.status(409).json({ code: "CONFLICT", message: "Only draft ballots can be edited" });
+    const { replaceOptions } = await import("./src/services/election.service.js");
     const options = Array.isArray(req.body?.options) ? req.body.options.map((option) => String(option).trim()) : [];
-    if (options.length < 2 || options.length > 50 || options.some((option) => !option) || new Set(options.map((v) => v.toLowerCase())).size !== options.length) {
-      return res.status(422).json({ code: "VALIDATION_ERROR", message: "Ballot choices must be unique and contain 2–50 entries" });
-    }
-    await prisma.$transaction(async (tx) => {
-      await tx.ballotOption.deleteMany({ where: { electionId: election.id } });
-      await tx.ballotOption.createMany({ data: options.map((label, position) => ({ electionId: election.id, position, label })) });
-    });
-    res.json({ ok: true });
+    const result = await replaceOptions(req.params.id, account.id, options);
+    res.json(result);
   } catch (error) {
     const { toErrorResponse } = await import("./src/errors.js");
     const response = toErrorResponse(error);
