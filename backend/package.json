@@ -4,22 +4,20 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "yarn build && node server.js",
-    "start": "yarn build && node server.js",
+    "dev": "node server.js",
+    "start": "node server.js",
     "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
       "prisma:studio": "prisma studio",
     "prisma:dev": "prisma migrate dev",
-    "seed": "tsx prisma/seed.ts",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "tsc"
+    "seed": "node prisma/seed.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
     "@prisma/client": "5.7.1",
     "dotenv": "^17.2.3",
     "pg": "^8.16.3",
-    "tsx": "^4.20.6",
     "zod": "^4.1.12"
   },
   "devDependencies": {
