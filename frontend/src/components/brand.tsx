@@ -8,7 +8,7 @@ export function BrandMark({ size = "md" }: { size?: "sm" | "md" }) {
   return (
     <div className={`relative shrink-0 overflow-hidden rounded-full ${box}`}>
       <Image
-        src="/logo.png"
+        src="/logo1.png"
         alt="BallotVeyra logo"
         width={pixels}
         height={pixels}
