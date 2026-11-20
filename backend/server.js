@@ -6,6 +6,7 @@ const port = Number(process.env.PORT ?? "3001");
 const allowedOrigins = [
   process.env.APP_ORIGIN,
   "http://localhost:3000",
+  "http://localhost:3001",
   "https://ballotveyra.vercel.app",
   "https://ballotveyra.com",
 ].filter((origin) => typeof origin === "string");
