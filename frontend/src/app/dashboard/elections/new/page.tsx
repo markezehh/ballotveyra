@@ -1,13 +1,27 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard-shell";
+import { apiRequest } from "@/lib/api";
 
 export default function NewElectionPage() {
+  const router = useRouter();
   const [choices, setChoices] = useState(["Amara Okafor", "Daniel Mensah"]);
   const [status, setStatus] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [account, setAccount] = useState<any>(null);
+  const [workspace, setWorkspace] = useState<any>(null);
 
-  function submitDraft(event: FormEvent<HTMLFormElement>) {
+  useEffect(() => {
+    Promise.all([
+      apiRequest<{ account: any }>("/api/auth/me"),
+      apiRequest<{ workspaces: any[] }>("/api/workspaces"),
+    ]).then(([me, data]) => { setAccount(me.account); setWorkspace(data.workspaces[0] ?? null); })
+      .catch((caught) => setStatus(caught instanceof Error ? caught.message : "Unable to load workspace"));
+  }, []);
+
+  async function submitDraft(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const finalStep = (event.nativeEvent as SubmitEvent).submitter?.getAttribute("name") === "continue";
@@ -21,11 +35,33 @@ export default function NewElectionPage() {
       setStatus("Add at least two non-empty ballot choices.");
       return;
     }
-    setStatus(finalStep ? "Draft ready. Voter setup will open when the API is connected." : "Draft saved locally for this preview.");
+    setLoading(true);
+    setStatus("");
+    try {
+      const result = await apiRequest<{ election: { id: string } }>("/api/elections", {
+        method: "POST",
+        body: JSON.stringify({
+          workspaceId: workspace?.id,
+          title: form.get("title"),
+          description: form.get("description") || undefined,
+          timeZone: form.get("timezone"),
+          opensAt: opens ? new Date(opens).toISOString() : undefined,
+          closesAt: closes ? new Date(closes).toISOString() : undefined,
+          options: choices,
+        }),
+      });
+      setStatus(finalStep ? "Election created. Continue with voter setup." : "Election draft saved.");
+      router.push(finalStep ? `/dashboard/elections/${result.election.id}` : "/dashboard");
+      router.refresh();
+    } catch (caught) {
+      setStatus(caught instanceof Error ? caught.message : "Unable to create election");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
-    <DashboardShell title="Create election">
+    <DashboardShell title="Create election" account={account} workspace={workspace}>
       <div className="mx-auto max-w-[760px]">
         <p className="text-sm font-semibold text-[#8793a1]">New election</p>
         <h1 className="mt-1 text-3xl font-bold tracking-tight text-[#10243f]">Set up the election</h1>
@@ -37,7 +73,7 @@ export default function NewElectionPage() {
             <div><label htmlFor="timezone" className="mb-2 block text-sm font-bold text-[#10243f]">Election timezone</label><select id="timezone" name="timezone" defaultValue="Africa/Lagos" className="h-12 w-full rounded-lg border border-[#10243f]/15 bg-white px-4 text-sm outline-none focus:border-[#1aa79a]"><option>Africa/Lagos</option><option>UTC</option><option>America/New_York</option><option>Europe/London</option></select></div>
             <fieldset className="border-t border-[#10243f]/8 pt-6"><legend className="font-bold text-[#10243f]">Ballot choices</legend><p className="mt-1 text-sm text-[#8793a1]">Add 2–50 ordered choices for this election.</p><div className="mt-4 space-y-3">{choices.map((choice, index) => <div key={index} className="flex gap-2"><input aria-label={`Choice ${index + 1}`} value={choice} onChange={(event) => setChoices((current) => current.map((value, i) => i === index ? event.target.value : value))} className="h-12 min-w-0 flex-1 rounded-lg border border-[#10243f]/15 px-4 text-sm" />{choices.length > 2 && <button type="button" aria-label={`Remove choice ${index + 1}`} onClick={() => setChoices((current) => current.filter((_, i) => i !== index))} className="h-12 rounded-lg border border-[#10243f]/15 px-3 text-sm font-bold text-[#9b4d4d]">Remove</button>}</div>)}<button type="button" disabled={choices.length >= 50} onClick={() => setChoices((current) => [...current, ""])} className="h-11 rounded-lg border border-dashed border-[#10243f]/20 px-4 text-sm font-bold text-[#13877d] disabled:opacity-40">+ Add choice</button></div></fieldset>
             {status && <p role="status" className="rounded-lg bg-[#edf4f3] px-4 py-3 text-sm font-bold text-[#4e6478]">{status}</p>}
-            <div className="flex justify-end gap-3 border-t border-[#10243f]/8 pt-6"><button type="submit" name="save" className="h-11 rounded-lg px-4 text-sm font-bold text-[#617083]">Save draft</button><button type="submit" name="continue" className="h-11 rounded-lg bg-[#1aa79a] px-5 text-sm font-bold text-white">Continue to voters</button></div>
+            <div className="flex justify-end gap-3 border-t border-[#10243f]/8 pt-6"><button type="submit" name="save" disabled={loading} className="h-11 rounded-lg px-4 text-sm font-bold text-[#617083] disabled:opacity-50">{loading ? "Saving…" : "Save draft"}</button><button type="submit" name="continue" disabled={loading} className="h-11 rounded-lg bg-[#1aa79a] px-5 text-sm font-bold text-white disabled:opacity-50">{loading ? "Creating…" : "Continue to voters"}</button></div>
           </form>
         </div>
       </div>

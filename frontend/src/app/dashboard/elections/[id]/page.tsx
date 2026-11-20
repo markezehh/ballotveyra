@@ -1,15 +1,76 @@
+"use client";
+
 import Link from "next/link";
+import { FormEvent, useEffect, useState } from "react";
 import { DashboardShell } from "@/components/dashboard-shell";
+import { apiRequest } from "@/lib/api";
 
-export const instant = false;
+export default function ElectionDetailPage() {
+  const [id, setId] = useState("");
+  const [account, setAccount] = useState<any>(null);
+  const [workspace, setWorkspace] = useState<any>(null);
+  const [election, setElection] = useState<any>(null);
+  const [tab, setTab] = useState("Overview");
+  const [status, setStatus] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [tally, setTally] = useState<any>(null);
 
-export default async function ElectionDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const tabs = ["Overview","Ballot","Voters","Results","Activity"];
-  return <DashboardShell title="Election">
-    <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between"><div><div className="mb-2 flex items-center gap-2 text-xs font-bold"><Link href="/dashboard" className="text-[#8793a1]">Elections</Link><span className="text-[#bec5cc]">/</span><span className="text-[#13877d]">Open</span></div><h1 className="text-3xl font-bold tracking-tight text-[#10243f]">Student Council President</h1><p className="mt-2 text-sm text-[#8793a1]">/{id} · Africa/Lagos (WAT)</p></div><button type="button" className="h-11 rounded-lg border border-[#10243f]/15 bg-white px-4 text-sm font-bold text-[#10243f]">Close election early</button></div>
-    <nav className="mt-8 flex gap-6 overflow-x-auto border-b border-[#10243f]/8" aria-label="Election sections">{tabs.map((tab,i) => <button key={tab} className={`shrink-0 border-b-2 px-1 pb-3 text-sm font-bold ${i === 0 ? "border-[#1aa79a] text-[#10243f]" : "border-transparent text-[#8793a1]"}`}>{tab}</button>)}</nav>
-    <div className="mt-7 grid gap-5 lg:grid-cols-[1fr_320px]"><section className="rounded-xl border border-[#10243f]/8 bg-white p-6"><div className="flex items-center justify-between"><h2 className="text-lg font-bold text-[#10243f]">Turnout</h2><span className="text-xs font-semibold text-[#8793a1]">Updated just now</span></div><div className="mt-6 flex items-end gap-3"><p className="text-4xl font-bold text-[#10243f]">218</p><p className="mb-1 text-sm text-[#8793a1]">of 300 eligible</p></div><div className="mt-5 h-2.5 overflow-hidden rounded-full bg-[#edf0f3]"><div className="h-full w-[72.7%] rounded-full bg-[#1aa79a]" /></div><p className="mt-3 text-sm font-bold text-[#13877d]">72.7% turnout</p></section><aside className="rounded-xl border border-[#10243f]/8 bg-white p-6"><p className="text-xs font-bold uppercase tracking-[0.12em] text-[#8793a1]">Voting window</p><div className="mt-5 space-y-4 text-sm"><div><p className="text-xs text-[#8793a1]">Opens</p><p className="mt-1 font-bold text-[#10243f]">Nov 18, 9:00 AM WAT</p></div><div><p className="text-xs text-[#8793a1]">Closes</p><p className="mt-1 font-bold text-[#10243f]">Nov 21, 5:00 PM WAT</p></div></div></aside></div>
-    <section className="mt-5 rounded-xl border border-[#10243f]/8 bg-white p-6"><h2 className="text-lg font-bold text-[#10243f]">Setup checklist</h2><div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{[["✓","Ballot configured"],["✓","Voters imported"],["✓","Invitations issued"],["✓","Election activated"]].map(([icon,label]) => <div key={label} className="flex items-center gap-3 rounded-lg bg-[#f7f9f8] p-4"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#edf8f6] text-xs font-bold text-[#13877d]">{icon}</span><span className="text-sm font-bold text-[#617083]">{label}</span></div>)}</div></section>
+  useEffect(() => {
+    setId(decodeURIComponent(window.location.pathname.split("/").filter(Boolean).pop() ?? ""));
+  }, []);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const [me, workspaces, detail] = await Promise.all([
+        apiRequest<{ account: any }>("/api/auth/me"),
+        apiRequest<{ workspaces: any[] }>("/api/workspaces"),
+        apiRequest<{ election: any }>(`/api/elections/${id}`),
+      ]);
+      setAccount(me.account);
+      setWorkspace(workspaces.workspaces[0] ?? null);
+      setElection(detail.election);
+      if (detail.election.status === "CLOSED" || detail.election.status === "PUBLISHED") {
+        const results = await apiRequest<{ tally: any }>(`/api/elections/${id}/results`);
+        setTally(results.tally);
+      }
+    } catch (caught) { setStatus(caught instanceof Error ? caught.message : "Unable to load election"); }
+    finally { setLoading(false); }
+  }
+
+  useEffect(() => { if (id) load(); }, [id]);
+
+  async function activate() {
+    try { const data = await apiRequest<{ election: any }>(`/api/elections/${id}/activate`, { method: "POST" }); setElection(data.election); setStatus("Election activated."); }
+    catch (caught) { setStatus(caught instanceof Error ? caught.message : "Unable to activate election"); }
+  }
+
+  async function closeElection() {
+    if (!confirm("Close this election now?")) return;
+    try { const data = await apiRequest<{ election: any }>(`/api/elections/${id}/close`, { method: "POST" }); setElection(data.election); setStatus("Election closed."); }
+    catch (caught) { setStatus(caught instanceof Error ? caught.message : "Unable to close election"); }
+  }
+
+  async function importVoters(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const rows = String(form.get("voters") ?? "").split(/\n|,/).map((value) => value.trim()).filter(Boolean).map((email, index) => ({ voterKey: email, email, displayName: email.split("@")[0] }));
+    if (!rows.length) { setStatus("Enter at least one voter email."); return; }
+    try { const result = await apiRequest<{ accepted: number }>(`/api/elections/${id}/voters`, { method: "POST", body: JSON.stringify({ rows }) }); setStatus(`${result.accepted} voters imported.`); await load(); event.currentTarget.reset(); }
+    catch (caught) { setStatus(caught instanceof Error ? caught.message : "Unable to import voters"); }
+  }
+
+  const turnout = election?.eligibleCount ? (election.ballotsCast / election.eligibleCount) * 100 : 0;
+
+  return <DashboardShell title="Election" account={account} workspace={workspace}>
+    {loading ? <p className="text-sm text-[#8793a1]">Loading election…</p> : !election ? <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{status || "Election not found"}</p> : <>
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between"><div><div className="mb-2 flex items-center gap-2 text-xs font-bold"><Link href="/dashboard" className="text-[#8793a1]">Elections</Link><span className="text-[#bec5cc]">/</span><span className="text-[#13877d]">{election.statusLabel}</span></div><h1 className="text-3xl font-bold tracking-tight text-[#10243f]">{election.title}</h1><p className="mt-2 text-sm text-[#8793a1]">/{election.slug} · {election.timeZone}</p></div>{election.status === "DRAFT" ? <button type="button" onClick={activate} className="h-11 rounded-lg bg-[#1aa79a] px-5 text-sm font-bold text-white">Activate election</button> : election.status === "SCHEDULED" ? <button type="button" onClick={closeElection} className="h-11 rounded-lg border border-[#10243f]/15 bg-white px-4 text-sm font-bold text-[#10243f]">Close election early</button> : null}</div>
+      {status && <p role="status" className="mt-5 rounded-lg bg-[#edf4f3] px-4 py-3 text-sm font-bold text-[#4e6478]">{status}</p>}
+      <nav className="mt-8 flex gap-6 overflow-x-auto border-b border-[#10243f]/8" aria-label="Election sections">{["Overview", "Ballot", "Voters", "Results"].map((name) => <button key={name} type="button" onClick={() => setTab(name)} className={`shrink-0 border-b-2 px-1 pb-3 text-sm font-bold ${tab === name ? "border-[#1aa79a] text-[#10243f]" : "border-transparent text-[#8793a1]"}`}>{name}</button>)}</nav>
+      {tab === "Overview" && <><div className="mt-7 grid gap-5 lg:grid-cols-[1fr_320px]"><section className="rounded-xl border border-[#10243f]/8 bg-white p-6"><div className="flex items-center justify-between"><h2 className="text-lg font-bold text-[#10243f]">Turnout</h2><span className="text-xs font-semibold text-[#8793a1]">Live</span></div><div className="mt-6 flex items-end gap-3"><p className="text-4xl font-bold text-[#10243f]">{election.ballotsCast}</p><p className="mb-1 text-sm text-[#8793a1]">of {election.eligibleCount} eligible</p></div><div className="mt-5 h-2.5 overflow-hidden rounded-full bg-[#edf0f3]"><div className="h-full rounded-full bg-[#1aa79a]" style={{ width: `${Math.min(turnout, 100)}%` }} /></div><p className="mt-3 text-sm font-bold text-[#13877d]">{turnout.toFixed(1)}% turnout</p></section><aside className="rounded-xl border border-[#10243f]/8 bg-white p-6"><p className="text-xs font-bold uppercase tracking-[0.12em] text-[#8793a1]">Voting window</p><div className="mt-5 space-y-4 text-sm"><div><p className="text-xs text-[#8793a1]">Opens</p><p className="mt-1 font-bold text-[#10243f]">{election.opensAt ? new Date(election.opensAt).toLocaleString() : "Not set"}</p></div><div><p className="text-xs text-[#8793a1]">Closes</p><p className="mt-1 font-bold text-[#10243f]">{election.closesAt ? new Date(election.closesAt).toLocaleString() : "Not set"}</p></div></div></aside></div><section className="mt-5 rounded-xl border border-[#10243f]/8 bg-white p-6"><h2 className="text-lg font-bold text-[#10243f]">Setup checklist</h2><div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{[[Boolean(election.options?.length), "Ballot configured"],[Boolean(election.eligibleCount), "Voters imported"],[election.status !== "DRAFT", "Election activated"],[election.status === "CLOSED" || election.status === "PUBLISHED", "Election closed"]].map(([done, label]) => <div key={String(label)} className="flex items-center gap-3 rounded-lg bg-[#f7f9f8] p-4"><span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${done ? "bg-[#edf8f6] text-[#13877d]" : "bg-[#edf0f3] text-[#8793a1]"}`}>{done ? "✓" : "○"}</span><span className="text-sm font-bold text-[#617083]">{String(label)}</span></div>)}</div></section></>}
+      {tab === "Ballot" && <section className="mt-6 rounded-xl border border-[#10243f]/8 bg-white p-6"><h2 className="text-lg font-bold text-[#10243f]">Ballot choices</h2><div className="mt-4 space-y-3">{election.options?.map((option: any, index: number) => <div key={option.id} className="rounded-lg border border-[#10243f]/8 px-4 py-3 text-sm font-bold text-[#10243f]"><span className="mr-3 text-[#8793a1]">{index + 1}</span>{option.label}</div>)}</div></section>}
+      {tab === "Voters" && <section className="mt-6 rounded-xl border border-[#10243f]/8 bg-white p-6"><h2 className="text-lg font-bold text-[#10243f]">Import eligible voters</h2><p className="mt-1 text-sm text-[#8793a1]">Enter one email per line. Available for draft elections only.</p><form onSubmit={importVoters} className="mt-5"><textarea name="voters" disabled={election.status !== "DRAFT"} rows={8} placeholder="voter@example.org\nanother@example.org" className="w-full rounded-lg border border-[#10243f]/15 p-4 text-sm disabled:bg-[#edf0f3]"/><button type="submit" disabled={election.status !== "DRAFT"} className="mt-3 h-11 rounded-lg bg-[#10243f] px-5 text-sm font-bold text-white disabled:opacity-50">Import voters</button></form></section>}
+      {tab === "Results" && <section className="mt-6 rounded-xl border border-[#10243f]/8 bg-white p-6"><h2 className="text-lg font-bold text-[#10243f]">Live tally</h2>{tally ? <div className="mt-5 space-y-4">{(tally.options ?? []).map((option: any) => <div key={option.id}><div className="mb-2 flex justify-between text-sm font-bold text-[#10243f]"><span>{option.label}</span><span>{option.count ?? 0}</span></div><div className="h-3 rounded-full bg-[#edf0f3]"><div className="h-full rounded-full bg-[#1aa79a]" style={{ width: `${tally.ballotsCast ? ((option.count ?? 0) / tally.ballotsCast) * 100 : 0}%` }} /></div></div>)}</div> : <p className="mt-4 text-sm text-[#8793a1]">Results appear after the election is closed or published.</p>}</section>}
+    </>}
   </DashboardShell>;
 }
