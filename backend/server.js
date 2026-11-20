@@ -3,17 +3,14 @@ import { createServer } from "node:http";
 
 const host = process.env.HOST ?? "0.0.0.0";
 const port = Number(process.env.PORT ?? "3001");
-const allowedOrigins = (process.env.APP_ORIGIN ?? "")
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean)
-  .concat([
-    "http://localhost:3000",
-    "http://localhost:3001",
-    "http://127.0.0.1:3000",
-    "https://ballotveyra.vercel.app",
-    "https://ballotveyra.com",
-  ]);
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:3001",
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:3001",
+  "https://ballotveyra.vercel.app",
+  "https://ballotveyra.com",
+];
 
 const getAllowedOrigin = (req) => {
   if (typeof req.headers.origin !== "string") return "";
