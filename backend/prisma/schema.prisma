@@ -86,6 +86,7 @@ model Election {
   imports       ImportBatch[]
   result        ResultSnapshot?
   events        AuditEvent[]
+  ballots       Ballot[]
 
   @@index([workspaceId, createdAt, id])
   @@map("Election")
@@ -126,6 +127,7 @@ model Ballot {
   id         String       @id @default(cuid())
   electionId String
   optionId   String
+  election   Election     @relation(fields: [electionId], references: [id], onDelete: Restrict)
   option     BallotOption @relation(fields: [electionId, optionId], references: [electionId, id], onDelete: Restrict)
 
   @@index([electionId, optionId])
