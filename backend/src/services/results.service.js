@@ -1,4 +1,7 @@
 import { prisma } from "../db.js";
+import { logService } from "./logger.js";
+
+logService("results", "service loaded");
 
 export async function getElectionResults(electionId, organizerId) {
   const election = await prisma.election.findFirst({

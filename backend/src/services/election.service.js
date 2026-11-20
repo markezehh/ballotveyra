@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "../db.js";
+import { logService } from "./logger.js";
+
+logService("election", "service loaded");
 
 export function derivedStatus(election) {
   if (election.status === "DRAFT") return "Draft";

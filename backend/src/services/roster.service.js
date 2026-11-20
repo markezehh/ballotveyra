@@ -1,4 +1,7 @@
 import { prisma } from "../db.js";
+import { logService } from "./logger.js";
+
+logService("roster", "service loaded");
 
 function error(status, code, message) {
   const caught = new Error(message);

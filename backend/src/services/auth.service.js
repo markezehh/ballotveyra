@@ -1,6 +1,9 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { prisma } from "../db.js";
 import { hashPassword, verifyPassword } from "../auth.js";
+import { logService } from "./logger.js";
+
+logService("auth", "service loaded");
 
 function resetSecret() {
   return process.env.PASSWORD_RESET_SECRET || process.env.VOTER_SESSION_SECRET;
@@ -15,6 +18,7 @@ function apiError(status, code, message) {
 }
 
 export function createPasswordResetToken(account) {
+  logService("auth", "createPasswordResetToken", { accountId: account.id });
   const secret = resetSecret();
   if (!secret || secret.length < 32) throw new Error("PASSWORD_RESET_SECRET or VOTER_SESSION_SECRET must contain at least 32 characters");
   const payload = Buffer.from(JSON.stringify({
@@ -27,6 +31,7 @@ export function createPasswordResetToken(account) {
 }
 
 export function readPasswordResetToken(token) {
+  logService("auth", "readPasswordResetToken");
   const secret = resetSecret();
   if (!secret || typeof token !== "string") return null;
   const separator = token.lastIndexOf(".");
@@ -47,6 +52,7 @@ export function readPasswordResetToken(token) {
 }
 
 export async function requestPasswordReset(email) {
+  logService("auth", "requestPasswordReset", { email: String(email ?? "").trim().toLowerCase() });
   const normalizedEmail = String(email ?? "").trim().toLowerCase();
   const account = await prisma.organizerProfile.findUnique({ where: { email: normalizedEmail } });
 
@@ -59,6 +65,7 @@ export async function requestPasswordReset(email) {
 }
 
 export async function resetPassword(token, password, confirmPassword) {
+  logService("auth", "resetPassword");
   if (password !== confirmPassword) throw apiError(422, "VALIDATION_ERROR", "Passwords do not match");
   const data = readPasswordResetToken(token);
   if (!data) throw apiError(400, "VALIDATION_ERROR", "This reset link is invalid or has expired");
