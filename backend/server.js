@@ -1,5 +1,8 @@
 import "dotenv/config";
+import express from "express";
 import { createServer } from "node:http";
+
+const app = express();
 
 const host = process.env.HOST ?? "0.0.0.0";
 const port = Number(process.env.PORT ?? "3001");
@@ -33,111 +36,101 @@ const getAllowedOrigin = (req) => {
   return "";
 };
 
-const json = (req, res, statusCode, body, extraHeaders = {}) => {
-  const headers = {
-    "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store",
-    "Access-Control-Allow-Origin": getAllowedOrigin(req),
-    "Access-Control-Allow-Credentials": "true",
-    "Vary": "Origin",
-    ...extraHeaders,
-  };
-  res.writeHead(statusCode, headers);
-  res.end(JSON.stringify(body));
-};
-
-async function readJson(req) {
-  let raw = "";
-  for await (const chunk of req) {
-    raw += chunk;
-    if (Buffer.byteLength(raw) > 1024 * 1024) throw new Error("Request body too large");
-  }
-  if (!raw) return {};
-  return JSON.parse(raw);
-}
-
 async function authResponse(req, res, operation) {
   try {
-    const body = await readJson(req);
     const auth = await import("./src/auth.js");
 
     if (operation === "register") {
-      const account = await auth.registerAccount(body);
-      json(req, res, 201, { account: auth.publicAccount(account) }, {
-        "Set-Cookie": auth.createSessionCookie(account),
-      });
+      const account = await auth.registerAccount(req.body);
+      res.setHeader("Set-Cookie", auth.createSessionCookie(account));
+      res.status(201).json({ account: auth.publicAccount(account) });
       return;
     }
 
     if (operation === "login") {
-      const account = await auth.loginAccount(body);
-      json(req, res, 200, { account: auth.publicAccount(account) }, {
-        "Set-Cookie": auth.createSessionCookie(account),
-      });
+      const account = await auth.loginAccount(req.body);
+      res.setHeader("Set-Cookie", auth.createSessionCookie(account));
+      res.status(200).json({ account: auth.publicAccount(account) });
       return;
     }
 
     if (operation === "me") {
       const account = await auth.getAccountFromRequest(req.headers.cookie);
       if (!account) {
-        json(req, res, 401, { code: "UNAUTHORIZED", message: "Authentication required" });
+        res.status(401).json({ code: "UNAUTHORIZED", message: "Authentication required" });
         return;
       }
-      json(req, res, 200, { account: auth.publicAccount(account) });
+      res.status(200).json({ account: auth.publicAccount(account) });
       return;
     }
 
     if (operation === "logout") {
-      json(req, res, 200, { ok: true }, { "Set-Cookie": auth.clearSessionCookie() });
+      res.setHeader("Set-Cookie", auth.clearSessionCookie());
+      res.status(200).json({ ok: true });
     }
   } catch (error) {
     const { toErrorResponse } = await import("./src/errors.js");
     const response = toErrorResponse(error);
-    json(req, res, response.status, response.body);
+    res.status(response.status).json(response.body);
   }
 }
 
-const server = createServer(async (req, res) => {
-  const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+app.disable("x-powered-by");
+app.use(express.json({ limit: "1mb" }));
 
-  if (req.method === "OPTIONS") {
-    res.writeHead(204, {
-      "Access-Control-Allow-Origin": getAllowedOrigin(req),
-      "Access-Control-Allow-Credentials": "true",
-      "Access-Control-Allow-Headers": "Content-Type",
-      "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-      "Vary": "Origin",
-    });
-    res.end();
-    return;
+app.use((req, res, next) => {
+  const origin = getAllowedOrigin(req);
+  if (origin) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.setHeader("Vary", "Origin");
   }
-
-  if (req.method === "GET" && (url.pathname === "/health" || url.pathname === "/api/health")) {
-    try {
-      const { healthCheck } = await import("./src/health.js");
-      const result = await healthCheck();
-      json(req, res, result.status === "ok" ? 200 : 503, result);
-    } catch (error) {
-      json(req, res, 503, {
-        status: "unavailable",
-        error: error instanceof Error ? error.message : "Health check failed",
-      });
-    }
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/auth/register") return void authResponse(req, res, "register");
-  if (req.method === "POST" && url.pathname === "/api/auth/login") return void authResponse(req, res, "login");
-  if (req.method === "GET" && url.pathname === "/api/auth/me") return void authResponse(req, res, "me");
-  if (req.method === "POST" && url.pathname === "/api/auth/logout") return void authResponse(req, res, "logout");
-
-  if (req.method === "GET" && url.pathname === "/") {
-    json(req, res, 200, { name: "BallotVeyra API", status: "running" });
-    return;
-  }
-
-  json(req, res, 404, { error: "Not found" });
+  next();
 });
+
+app.use((req, res, next) => {
+  if (req.method === "OPTIONS") {
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader("Access-Control-Allow-Methods", "GET,HEAD,POST,OPTIONS");
+    res.sendStatus(204);
+    return;
+  }
+  next();
+});
+
+app.get(["/health", "/api/health"], async (req, res) => {
+  try {
+    const { healthCheck } = await import("./src/health.js");
+    const result = await healthCheck();
+    res.status(result.status === "ok" ? 200 : 503).json(result);
+  } catch (error) {
+    res.status(503).json({
+      status: "unavailable",
+      error: error instanceof Error ? error.message : "Health check failed",
+    });
+  }
+});
+
+app.head("/health", (req, res) => {
+  console.log("req body received for health check:", req.body);
+  console.log("HEAD wake-up call from Uptimerobot");
+  res.status(200).json({ status: "ok", message: "Backend server is running" });
+});
+
+app.post("/api/auth/register", (req, res) => void authResponse(req, res, "register"));
+app.post("/api/auth/login", (req, res) => void authResponse(req, res, "login"));
+app.get("/api/auth/me", (req, res) => void authResponse(req, res, "me"));
+app.post("/api/auth/logout", (req, res) => void authResponse(req, res, "logout"));
+
+app.get("/", (req, res) => {
+  res.status(200).json({ name: "BallotVeyra API", status: "running" });
+});
+
+app.use((req, res) => {
+  res.status(404).json({ error: "Not found" });
+});
+
+const server = createServer(app);
 
 server.listen(port, host, () => {
   console.log(`BallotVeyra backend listening on http://${host}:${port}`);
