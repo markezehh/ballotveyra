@@ -1,4 +1,4 @@
-import { prisma } from "./db.js";
+import { prisma } from "./db.ts";
 
 export async function healthCheck() {
   const started = Date.now();

@@ -3,18 +3,38 @@ import { createServer } from "node:http";
 
 const host = process.env.HOST ?? "0.0.0.0";
 const port = Number(process.env.PORT ?? "3001");
-const allowedOrigins = [
-  process.env.APP_ORIGIN,
-  "http://localhost:3000",
-  "http://localhost:3001",
-  "https://ballotveyra.vercel.app",
-  "https://ballotveyra.com",
-].filter((origin) => typeof origin === "string");
+const allowedOrigins = (process.env.APP_ORIGIN ?? "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean)
+  .concat([
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3000",
+    "https://ballotveyra.vercel.app",
+    "https://ballotveyra.com",
+  ]);
 
-const getAllowedOrigin = (req) =>
-  typeof req.headers.origin === "string" && allowedOrigins.includes(req.headers.origin)
-    ? req.headers.origin
-    : "";
+const getAllowedOrigin = (req) => {
+  if (typeof req.headers.origin !== "string") return "";
+
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) return origin;
+
+  try {
+    const url = new URL(origin);
+    if (
+      url.protocol === "http:" &&
+      (url.hostname === "localhost" || url.hostname === "127.0.0.1")
+    ) {
+      return origin;
+    }
+  } catch {
+    // Ignore malformed Origin headers.
+  }
+
+  return "";
+};
 
 const json = (req, res, statusCode, body, extraHeaders = {}) => {
   const headers = {

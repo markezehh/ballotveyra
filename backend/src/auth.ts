@@ -1,7 +1,7 @@
 import { randomBytes, scrypt as scryptCallback, timingSafeEqual, createHmac } from "node:crypto";
 import { promisify } from "node:util";
-import { prisma } from "./db.js";
-import { ApiError } from "./errors.js";
+import { prisma } from "./db.ts";
+import { ApiError } from "./errors.ts";
 
 const scrypt = promisify(scryptCallback);
 const SESSION_COOKIE = "ballotveyra_session";
@@ -61,13 +61,17 @@ export function createSessionCookie(account: { id: string; email: string }) {
   const payload = Buffer.from(JSON.stringify({ id: account.id, email: account.email, exp: Date.now() + SESSION_MAX_AGE_SECONDS * 1000 })).toString("base64url");
   const signature = createHmac("sha256", sessionSecret()).update(payload).digest("base64url");
   const cookieValue = `${payload}.${signature}`;
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-  return `${SESSION_COOKIE}=${cookieValue}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${SESSION_MAX_AGE_SECONDS}${secure}`;
+  const cookieAttributes = process.env.NODE_ENV === "production"
+    ? "SameSite=None; Secure"
+    : "SameSite=Lax";
+  return `${SESSION_COOKIE}=${cookieValue}; HttpOnly; Path=/; ${cookieAttributes}; Max-Age=${SESSION_MAX_AGE_SECONDS}`;
 }
 
 export function clearSessionCookie() {
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-  return `${SESSION_COOKIE}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${secure}`;
+  const cookieAttributes = process.env.NODE_ENV === "production"
+    ? "SameSite=None; Secure"
+    : "SameSite=Lax";
+  return `${SESSION_COOKIE}=; HttpOnly; Path=/; ${cookieAttributes}; Max-Age=0`;
 }
 
 export function readSessionCookie(cookieHeader?: string) {
