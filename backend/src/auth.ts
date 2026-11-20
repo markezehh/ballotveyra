@@ -44,6 +44,7 @@ export async function registerAccount(input: { firstName: string; lastName: stri
   const account = await prisma.organizerProfile.create({
     data: { email, firstName, lastName, passwordHash, emailVerified: true },
   });
+  
   return account;
 }
 
