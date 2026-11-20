@@ -9,6 +9,8 @@ const elections = [
   ["Regional Meetup Hosts", "Published", "96 / 120", "80", "regional-meetup-hosts"],
 ];
 
+
+
 export default function DashboardPage() {
   return <DashboardShell title="Elections">
     <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-sm font-semibold text-[#7a8794]">Northbridge Alumni</p><h1 className="mt-1 text-3xl font-bold tracking-tight text-[#10243f]">Good morning, Amara</h1></div><Link href="/dashboard/elections/new" className="flex h-11 items-center justify-center rounded-lg bg-[#1aa79a] px-5 text-sm font-bold text-white hover:bg-[#13877d]">+ Create election</Link></div>
