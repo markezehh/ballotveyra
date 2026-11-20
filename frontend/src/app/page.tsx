@@ -1,17 +1,7 @@
 'use client'
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-
-function BrandMark() {
-  return (
-    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#10243f] text-white">
-      <svg viewBox="0 0 36 36" className="h-6 w-6" aria-hidden="true">
-        <path d="M11 18.5 16 23l9-10" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx="18" cy="18" r="13" fill="none" stroke="currentColor" strokeWidth="2" opacity=".45" />
-      </svg>
-    </div>
-  );
-}
+import { BrandMark } from "@/components/brand";
 
 function ArrowIcon() {
   return (

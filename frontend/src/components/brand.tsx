@@ -1,14 +1,20 @@
+import Image from "next/image";
 import Link from "next/link";
 
 export function BrandMark({ size = "md" }: { size?: "sm" | "md" }) {
-  const box = size === "sm" ? "h-8 w-8 rounded-lg" : "h-9 w-9 rounded-xl";
-  const icon = size === "sm" ? "h-5 w-5" : "h-6 w-6";
+  const box = size === "sm" ? "h-8 w-8" : "h-9 w-9";
+  const pixels = size === "sm" ? 32 : 36;
+
   return (
-    <div className={`flex shrink-0 items-center justify-center bg-[#10243f] text-white ${box}`}>
-      <svg viewBox="0 0 36 36" className={icon} aria-hidden="true">
-        <path d="M11 18.5 16 23l9-10" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx="18" cy="18" r="13" fill="none" stroke="currentColor" strokeWidth="2" opacity=".45" />
-      </svg>
+    <div className={`relative shrink-0 overflow-hidden rounded-full ${box}`}>
+      <Image
+        src="/logo.png"
+        alt="BallotVeyra logo"
+        width={pixels}
+        height={pixels}
+        className="h-full w-full object-cover"
+        priority
+      />
     </div>
   );
 }
