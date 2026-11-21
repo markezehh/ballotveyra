@@ -107,9 +107,18 @@ export function VoterExperience() {
                     <p className="mt-1 text-sm text-[#8793a1]">Select one option.</p>
                     <div className="mt-5 space-y-3">
                       {election.options.map((option) => (
-                        <label key={option.id} className={`flex min-h-[76px] cursor-pointer items-start gap-3 rounded-xl border p-4 ${selected === option.id ? "border-[#1aa79a] bg-[#f4fbf9]" : "border-[#10243f]/12 hover:border-[#10243f]/30"}`}>
-                          <input type="radio" name="choice" value={option.id} checked={selected === option.id} onChange={() => setSelected(option.id)} className="mt-1 h-5 w-5 accent-[#1aa79a]" />
-                          <span><span className="block font-bold text-[#10243f]">{option.label}</span>{option.description && <span className="mt-1 block text-sm leading-5 text-[#7a8794]">{option.description}</span>}</span>
+                        <label
+                          key={option.id}
+                          className={`flex min-h-[76px] md:pr-20 cursor-pointer items-center gap-3 rounded-xl border p-4 ${selected === option.id ? "border-[#1aa79a] bg-[#f4fbf9]" : "border-[#10243f]/12 hover:border-[#10243f]/30"}`}
+                        >
+                          <input type="radio" name="choice" value={option.id} checked={selected === option.id} onChange={() => setSelected(option.id)} className="h-5 w-5 shrink-0 accent-[#1aa79a]" />
+                          <span className="min-w-0 flex-1">
+                            <span className="block font-bold text-[#10243f]">{option.label}</span>
+                            {option.description && <span className="mt-1 block text-sm leading-5 text-[#7a8794]">{option.description}</span>}
+                          </span>
+                          {selected === option.id && (
+                            <img src="/fingerprint.png" alt="" className="h-12 w-14 md:h-15 md:w-20 shrink-0 object-contain" />
+                          )}
                         </label>
                       ))}
                     </div>
