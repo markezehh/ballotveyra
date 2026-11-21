@@ -1,7 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import { createServer } from "node:http";
-import { createHmac, randomBytes, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 
 const app = express();
 
@@ -557,6 +557,100 @@ app.post("/api/elections/:id/voters/invite-all", async (req, res) => {
     });
 
     res.status(201).json({ invited: invitations.length, invitations });
+  } catch (error) {
+    const { toErrorResponse } = await import("./src/errors.js");
+    const response = toErrorResponse(error);
+    res.status(response.status).json(response.body);
+  }
+});
+
+app.get("/api/public/elections", async (req, res) => {
+  try {
+    const { prisma } = await import("./src/db.js");
+    const elections = await prisma.election.findMany({
+      where: { status: { in: ["SCHEDULED", "PUBLISHED", "CLOSED"] } },
+      include: { workspace: true, options: { orderBy: { position: "asc" } } },
+      orderBy: { createdAt: "desc" },
+    });
+    res.json({ elections: elections.map((election) => ({
+      id: election.id, slug: election.slug, title: election.title,
+      description: election.description, status: election.status,
+      timeZone: election.timeZone, opensAt: election.opensAt, closesAt: election.closesAt,
+      workspace: { name: election.workspace.name, slug: election.workspace.slug }, options: election.options,
+    })) });
+  } catch (error) {
+    const { toErrorResponse } = await import("./src/errors.js");
+    const response = toErrorResponse(error);
+    res.status(response.status).json(response.body);
+  }
+});
+
+app.get("/api/public/elections/:slug", async (req, res) => {
+  try {
+    const { prisma } = await import("./src/db.js");
+    const election = await prisma.election.findUnique({
+      where: { slug: req.params.slug },
+      include: { workspace: true, options: { orderBy: { position: "asc" } } },
+    });
+    if (!election) return res.status(404).json({ code: "NOT_FOUND", message: "Election not found" });
+    res.json({ election: {
+      id: election.id, slug: election.slug, title: election.title,
+      description: election.description, status: election.status,
+      timeZone: election.timeZone, opensAt: election.opensAt, closesAt: election.closesAt,
+      workspace: { name: election.workspace.name, slug: election.workspace.slug }, options: election.options,
+    } });
+  } catch (error) {
+    const { toErrorResponse } = await import("./src/errors.js");
+    const response = toErrorResponse(error);
+    res.status(response.status).json(response.body);
+  }
+});
+
+app.post("/api/public/elections/:slug/vote", async (req, res) => {
+  try {
+    const rawToken = String(req.body?.token ?? "").trim();
+    const optionId = String(req.body?.optionId ?? "").trim();
+    if (!rawToken) return res.status(401).json({ code: "UNAUTHORIZED", message: "A valid invitation token is required" });
+
+    const { prisma } = await import("./src/db.js");
+    const digests = [];
+    for (const entry of String(process.env.INVITE_HMAC_KEYS ?? "").split(",")) {
+      const separator = entry.indexOf(":");
+      if (separator < 1) continue;
+      const secret = entry.slice(separator + 1);
+      if (secret.length >= 32) digests.push(createHmac("sha256", secret).update(rawToken).digest("hex"));
+    }
+    if (!digests.length) return res.status(500).json({ code: "CONFIGURATION_ERROR", message: "INVITE_HMAC_KEYS are not configured" });
+
+    const election = await prisma.election.findUnique({ where: { slug: req.params.slug }, include: { options: true } });
+    if (!election) return res.status(404).json({ code: "NOT_FOUND", message: "Election not found" });
+
+    const voter = await prisma.eligibleVoter.findFirst({ where: { electionId: election.id, tokenDigest: { in: digests } } });
+    if (!voter) return res.status(404).json({ code: "NOT_FOUND", message: "This invitation is not valid" });
+    if (voter.redeemed) return res.json({ alreadyRecorded: true });
+    if (election.status !== "SCHEDULED") return res.status(409).json({ code: "CONFLICT", message: "Voting is not available" });
+
+    const dbNow = await prisma.$queryRaw`SELECT now() AS now`;
+    const now = dbNow[0]?.now;
+    if (election.opensAt && (!now || now < election.opensAt)) return res.status(409).json({ code: "CONFLICT", message: "Voting has not opened" });
+    if (election.closesAt && now && now >= election.closesAt) return res.status(409).json({ code: "CONFLICT", message: "Voting has closed" });
+
+    const option = election.options.find((candidate) => candidate.id === optionId);
+    if (!option) return res.status(422).json({ code: "VALIDATION_ERROR", message: "Select a valid ballot option" });
+
+    await prisma.$transaction(async (tx) => {
+      const current = await tx.eligibleVoter.findUnique({ where: { id: voter.id } });
+      if (current?.redeemed) return;
+      await tx.eligibleVoter.update({ where: { id: voter.id }, data: { redeemed: true } });
+      await tx.ballot.create({
+        data: {
+          id: createHash("sha256").update(`${rawToken}:${optionId}`).digest("hex").slice(0, 32),
+          electionId: election.id,
+          optionId,
+        },
+      });
+    });
+    res.status(201).json({ alreadyRecorded: false });
   } catch (error) {
     const { toErrorResponse } = await import("./src/errors.js");
     const response = toErrorResponse(error);
