@@ -29,6 +29,7 @@ export function VoterExperience() {
     apiRequest<{ elections: Election[] }>("/api/public/elections")
       .then(({ elections }) => {
         setElections(elections);
+        console.log('Fetched elections:', elections);
         const hashSlug = new URLSearchParams(window.location.search).get("election");
         const preferred = elections.find((election) => election.slug === hashSlug) ?? elections[0];
         if (preferred) setSelectedElectionSlug(preferred.slug);
@@ -91,7 +92,10 @@ export function VoterExperience() {
                 <label className="mb-5 block">
                   <span className="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-[#8793a1]">Election</span>
                   <select value={selectedElectionSlug} onChange={(event) => { setSelectedElectionSlug(event.target.value); setSelected(""); setStep("ballot"); }} className="h-11 w-full rounded-lg border border-[#10243f]/15 px-3 text-sm font-bold text-[#10243f]">
-                    {elections.map((item) => <option key={item.id} value={item.slug}>{item.title}</option>)}
+                    {elections.map((item) =>{
+                        if(item.status !=='SCHEDULED') return null;
+                        return<option key={item.id} value={item.slug}>{item.title}</option>}
+                         )}
                   </select>
                 </label>
               )}

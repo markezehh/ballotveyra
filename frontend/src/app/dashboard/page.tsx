@@ -41,6 +41,7 @@ export default function DashboardPage() {
       try {
         const electionData = await apiRequest<{ elections: Election[] }>("/api/elections");
         setElections(electionData.elections);
+        console.log('Refreshed elections:', electionData.elections);
         setError("");
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : "Unable to refresh elections");
@@ -55,6 +56,7 @@ export default function DashboardPage() {
     () =>
       elections.filter((election) => {
         if (filter === "Active") return ["Open", "Scheduled", "Published"].includes(election.statusLabel);
+       // console.log('Filtering elections with filter:', filter, 'Election status:', election.statusLabel);
         if (filter === "Closed") return election.statusLabel === "Closed";
         return true;
       }),

@@ -208,6 +208,7 @@ function electionStatus(election) {
   if (election.status === "DRAFT") return "Draft";
   if (election.status === "CANCELLED") return "Cancelled";
   if (election.status === "PUBLISHED") return "Published";
+  if(election.status === "SCHEDULED") return "Scheduled";
   if (election.status === "CLOSED") return "Closed";
   const now = new Date();
   if (election.opensAt && now < new Date(election.opensAt)) return "Scheduled";
