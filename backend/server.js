@@ -679,6 +679,48 @@ app.post("/api/public/elections/:slug/vote", async (req, res) => {
   }
 });
 
+app.patch("/api/elections/:id/voting-window", async (req, res) => {
+  try {
+    const account = await requireAccount(req, res);
+    if (!account) return;
+    const { prisma } = await import("./src/db.js");
+    const election = await prisma.election.findUnique({ where: { id: req.params.id } });
+    if (!election) return res.status(404).json({ code: "NOT_FOUND", message: "Election not found" });
+
+    const membership = await prisma.workspaceMember.findUnique({
+      where: { workspaceId_organizerId: { workspaceId: election.workspaceId, organizerId: account.id } },
+    });
+    if (!membership || !["OWNER", "MANAGER"].includes(membership.role)) {
+      return res.status(403).json({ code: "FORBIDDEN", message: "You do not have permission for this action" });
+    }
+    if (election.status !== "DRAFT") {
+      return res.status(409).json({ code: "CONFLICT", message: "The voting window is locked after activation" });
+    }
+
+    const opensValue = req.body?.opensAt ? String(req.body.opensAt) : null;
+    const closesValue = req.body?.closesAt ? String(req.body.closesAt) : null;
+    const opensAt = opensValue ? new Date(opensValue) : null;
+    const closesAt = closesValue ? new Date(closesValue) : null;
+
+    if ((opensValue && Number.isNaN(opensAt?.getTime())) || (closesValue && Number.isNaN(closesAt?.getTime()))) {
+      return res.status(422).json({ code: "VALIDATION_ERROR", message: "Enter valid voting window dates" });
+    }
+    if (opensAt && closesAt && closesAt <= opensAt) {
+      return res.status(422).json({ code: "VALIDATION_ERROR", message: "Closing time must be after opening time" });
+    }
+
+    const updated = await prisma.election.update({
+      where: { id: election.id },
+      data: { opensAt, closesAt },
+    });
+    res.json({ election: { ...updated, statusLabel: electionStatus(updated) } });
+  } catch (error) {
+    const { toErrorResponse } = await import("./src/errors.js");
+    const response = toErrorResponse(error);
+    res.status(response.status).json(response.body);
+  }
+});
+
 app.use((req, res) => {
   res.status(404).json({ error: "Not found" });
 });
