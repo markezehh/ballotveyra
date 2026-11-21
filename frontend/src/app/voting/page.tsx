@@ -12,6 +12,8 @@ type Election = {
   description: string | null;
   status: string;
   timeZone: string;
+  opensAt: string | null;
+  closesAt: string | null;
   workspace: { name: string; slug: string };
   options: Option[];
 };
@@ -24,6 +26,7 @@ export function VoterExperience() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     apiRequest<{ elections: Election[] }>("/api/public/elections")
@@ -38,7 +41,30 @@ export function VoterExperience() {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const election = elections.find((item) => item.slug === selectedElectionSlug);
+  const opensAtTime = election?.opensAt ? new Date(election.opensAt).getTime() : Number.NaN;
+  const closesAtTime = election?.closesAt ? new Date(election.closesAt).getTime() : Number.NaN;
+  const remainingMs = Number.isFinite(opensAtTime) ? opensAtTime - now : 0;
+  const closingRemainingMs = Number.isFinite(closesAtTime) ? closesAtTime - now : 0;
+  const votingNotOpen = remainingMs > 0;
+  const votingClosed = Number.isFinite(closesAtTime) && closingRemainingMs <= 0;
+  const countdown = {
+    days: Math.floor(remainingMs / 86_400_000),
+    hours: Math.floor((remainingMs % 86_400_000) / 3_600_000),
+    minutes: Math.floor((remainingMs % 3_600_000) / 60_000),
+    seconds: Math.floor((remainingMs % 60_000) / 1000),
+  };
+  const closingCountdown = {
+    days: Math.max(0, Math.floor(closingRemainingMs / 86_400_000)),
+    hours: Math.max(0, Math.floor((closingRemainingMs % 86_400_000) / 3_600_000)),
+    minutes: Math.max(0, Math.floor((closingRemainingMs % 3_600_000) / 60_000)),
+    seconds: Math.max(0, Math.floor((closingRemainingMs % 60_000) / 1000)),
+  };
 
   async function submitBallot() {
     if (!election || !selected) return;
@@ -109,41 +135,93 @@ export function VoterExperience() {
 
               {error && <p role="alert" className="mt-5 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
 
-              {step === "ballot" ? (
-                <>
-                  <fieldset className="mt-5">
-                    <legend className="text-base font-bold text-[#10243f]">Select your choice</legend>
-                    <p className="mt-1 text-sm text-[#8793a1]">Select one option.</p>
-                    <div className="mt-5 space-y-3">
-                      {election.options.map((option) => (
-                        <label
-                          key={option.id}
-                          className={`flex min-h-[76px] md:pr-20 cursor-pointer items-center gap-3 rounded-xl border p-4 ${selected === option.id ? "border-[#1aa79a] bg-[#f4fbf9]" : "border-[#10243f]/12 hover:border-[#10243f]/30"}`}
-                        >
-                          <input type="radio" name="choice" value={option.id} checked={selected === option.id} onChange={() => setSelected(option.id)} className="h-5 w-5 shrink-0 accent-[#1aa79a]" />
-                          <span className="min-w-0 flex-1">
-                            <span className="block font-bold text-[#10243f]">{option.label}</span>
-                            {option.description && <span className="mt-1 block text-sm leading-5 text-[#7a8794]">{option.description}</span>}
-                          </span>
-                          {selected === option.id && (
-                            <img src="/fingerprint.png" alt="" className="h-12 w-14 md:h-15 md:w-20 shrink-0 object-contain" />
-                          )}
-                        </label>
-                      ))}
-                    </div>
-                  </fieldset>
-                  <button type="button" disabled={!selected} onClick={() => setStep("review")} className="mt-6 h-12 w-full rounded-lg bg-[#10243f] text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40">Review ballot</button>
-                </>
+              {votingNotOpen ? (
+                <div className="mt-6 rounded-xl border border-[#1aa79a]/30 bg-[#f4fbf9] p-5 text-center">
+                  <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#13877d]">Voting opens in</p>
+                  <div className="mt-4 grid grid-cols-4 gap-2">
+                    {[
+                      [countdown.days, "Days"],
+                      [countdown.hours, "Hours"],
+                      [countdown.minutes, "Minutes"],
+                      [countdown.seconds, "Seconds"],
+                    ].map(([value, label]) => (
+                      <div key={String(label)} className="rounded-lg border border-[#10243f]/8 bg-white px-1 py-3">
+                        <p className="text-2xl font-bold tabular-nums text-[#10243f]">{String(value).padStart(2, "0")}</p>
+                        <p className="mt-1 text-[10px] font-bold uppercase text-[#8793a1]">{label}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-4 text-sm text-[#8793a1]">
+                    Opens {new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short", timeZone: election.timeZone }).format(new Date(election.opensAt!))}
+                  </p>
+                </div>
+              ) : votingClosed ? (
+                <div className="mt-6 rounded-xl border border-[#d9534f]/30 bg-[#f9ebea] p-5 text-center">
+                  <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#d9534f]">Voting closed</p>
+                  {election.closesAt && (
+                    <p className="mt-3 text-sm text-[#8793a1]">
+                      Closed {new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short", timeZone: election.timeZone }).format(new Date(election.closesAt))}
+                    </p>
+                  )}
+                </div>
               ) : (
                 <>
-                  <h2 className="mt-5 text-xl font-bold text-[#10243f]">Review your choice</h2>
-                  <p className="mt-2 text-sm leading-6 text-[#8793a1]">Confirm your choice before submitting. You cannot edit or replace this ballot afterward.</p>
-                  <div className="mt-5 rounded-xl border border-[#1aa79a]/30 bg-[#f4fbf9] p-4">
-                    <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#13877d]">Your choice</p>
-                    <p className="mt-2 font-bold text-[#10243f]">{election.options.find((option) => option.id === selected)?.label}</p>
-                  </div>
-                  <button type="button" disabled={submitting} onClick={() => void submitBallot()} className="mt-6 h-12 w-full rounded-lg bg-[#1aa79a] text-sm font-bold text-white disabled:opacity-60">{submitting ? "Submitting…" : "Submit my ballot"}</button>
-                  <button type="button" onClick={() => setStep("ballot")} className="mt-3 h-11 w-full rounded-lg text-sm font-bold text-[#617083]">Go back</button>
+                  {Number.isFinite(closesAtTime) && closingRemainingMs > 0 && (
+                    <div className="mt-6 rounded-xl border border-[#13877d]/20 bg-[#edf8f6] p-4 text-center">
+                      <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#13877d]">Voting closes in</p>
+                      <div className="mt-3 grid grid-cols-4 gap-2">
+                        {[
+                          [closingCountdown.days, "Days"],
+                          [closingCountdown.hours, "Hours"],
+                          [closingCountdown.minutes, "Minutes"],
+                          [closingCountdown.seconds, "Seconds"],
+                        ].map(([value, label]) => (
+                          <div key={String(label)} className="rounded-lg border border-[#10243f]/8 bg-white px-1 py-2">
+                            <p className="text-xl font-bold tabular-nums text-[#10243f]">{String(value).padStart(2, "0")}</p>
+                            <p className="mt-1 text-[10px] font-bold uppercase text-[#8793a1]">{label}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {step === "ballot" ? (
+                    <>
+                      <fieldset className="mt-5">
+                        <legend className="text-base font-bold text-[#10243f]">Select your choice</legend>
+                        <p className="mt-1 text-sm text-[#8793a1]">Select one option.</p>
+                        <div className="mt-5 space-y-3">
+                          {election.options.map((option) => (
+                            <label
+                              key={option.id}
+                              className={`flex min-h-[76px] md:pr-20 cursor-pointer items-center gap-3 rounded-xl border p-4 ${selected === option.id ? "border-[#1aa79a] bg-[#f4fbf9]" : "border-[#10243f]/12 hover:border-[#10243f]/30"}`}
+                            >
+                              <input type="radio" name="choice" value={option.id} checked={selected === option.id} onChange={() => setSelected(option.id)} className="h-5 w-5 shrink-0 accent-[#1aa79a]" />
+                              <span className="min-w-0 flex-1">
+                                <span className="block font-bold text-[#10243f]">{option.label}</span>
+                                {option.description && <span className="mt-1 block text-sm leading-5 text-[#7a8794]">{option.description}</span>}
+                              </span>
+                              {selected === option.id && (
+                                <img src="/fingerprint.png" alt="" className="h-12 w-14 md:h-15 md:w-20 shrink-0 object-contain" />
+                              )}
+                            </label>
+                          ))}
+                        </div>
+                      </fieldset>
+                      <button type="button" disabled={!selected} onClick={() => setStep("review")} className="mt-6 h-12 w-full rounded-lg bg-[#10243f] text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40">Review ballot</button>
+                    </>
+                  ) : (
+                    <>
+                      <h2 className="mt-5 text-xl font-bold text-[#10243f]">Review your choice</h2>
+                      <p className="mt-2 text-sm leading-6 text-[#8793a1]">Confirm your choice before submitting. You cannot edit or replace this ballot afterward.</p>
+                      <div className="mt-5 rounded-xl border border-[#1aa79a]/30 bg-[#f4fbf9] p-4">
+                        <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#13877d]">Your choice</p>
+                        <p className="mt-2 font-bold text-[#10243f]">{election.options.find((option) => option.id === selected)?.label}</p>
+                      </div>
+                      <button type="button" disabled={submitting} onClick={() => void submitBallot()} className="mt-6 h-12 w-full rounded-lg bg-[#1aa79a] text-sm font-bold text-white disabled:opacity-60">{submitting ? "Submitting…" : "Submit my ballot"}</button>
+                      <button type="button" onClick={() => setStep("ballot")} className="mt-3 h-11 w-full rounded-lg text-sm font-bold text-[#617083]">Go back</button>
+                    </>
+                  )}
                 </>
               )}
             </>
