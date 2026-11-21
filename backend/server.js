@@ -597,6 +597,10 @@ app.get("/api/public/elections/:slug", async (req, res) => {
 async function assertBallotCapacity(tx, electionId, frozenEligibleCount) {
   await tx.$queryRaw`SELECT id FROM ballotveyra."Election" WHERE id = ${electionId}::text FOR UPDATE`;
   const eligibleCount = frozenEligibleCount ?? await tx.eligibleVoter.count({ where: { electionId } });
+
+  // A public/rosterless election has no configured ballot limit.
+  if (eligibleCount <= 0) return;
+
   const ballotsCast = await tx.ballot.count({ where: { electionId } });
   if (ballotsCast >= eligibleCount) {
     const error = new Error("The election has reached its eligible voter ballot limit");
@@ -730,10 +734,17 @@ app.post("/api/public/elections/:slug/vote", async (req, res) => {
         data: { id: randomUUID(), electionId: election.id, optionId },
       });
       return { alreadyRecorded: false };
-    }, { timeout: 1500, maxWait: 500 });
+    }, { timeout: 10000, maxWait: 2000 });
 
     res.status(result.alreadyRecorded ? 200 : 201).json(result);
   } catch (error) {
+    if (!(error instanceof Error && Number.isInteger(error.status) && error.code)) {
+      console.error("[PUBLIC VOTE] Unexpected transaction error", {
+        name: error instanceof Error ? error.name : typeof error,
+        message: error instanceof Error ? error.message : String(error),
+        code: error && typeof error === "object" && "code" in error ? error.code : undefined,
+      });
+    }
     const { toErrorResponse } = await import("./src/errors.js");
     const response = toErrorResponse(error);
     res.status(response.status).json(response.body);

@@ -14,7 +14,10 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
     if (response.status === 401 && typeof window !== "undefined" && !window.location.pathname.startsWith("/login") && !window.location.pathname.startsWith("/register")) {
       window.location.href = "/login";
     }
-    throw new Error(data.message ?? "Request failed");
+    const error = new Error(data.message ?? "Request failed") as Error & { status?: number; code?: string };
+    error.status = response.status;
+    error.code = typeof data.code === "string" ? data.code : undefined;
+    throw error;
   }
   return data as T;
 }
