@@ -10,6 +10,7 @@ const nav = [
 	["Elections", "/dashboard", "ballot"],
 	["Manage Voters", "/dashboard/voters", "users"],
 	["Members", "/workspaces/northbridge/members", "users"],
+	["Pricing", "/pricing", "pricing"],
 ];
 
 function Icon({ name }: { name: string }) {
@@ -33,6 +34,12 @@ function Icon({ name }: { name: string }) {
 				<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
 				<circle cx="9" cy="7" r="4" />
 				<path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+			</>
+		),
+		pricing: (
+			<>
+				<rect x="3" y="6" width="18" height="12" rx="2" />
+				<path d="M3 10h18M7 15h2" />
 			</>
 		),
 	};
@@ -83,6 +90,7 @@ export function DashboardShell({
 		if (label === "Elections") return pathname.startsWith("/dashboard/elections");
 		if (label === "Manage Voters") return pathname.startsWith("/dashboard/voters");
 		if (label === "Members") return pathname === `/workspaces/${workspaceSlug}/members` || pathname.startsWith("/workspaces/");
+		if (label === "Pricing") return pathname === "/pricing";
 		return pathname === href;
 	}
 

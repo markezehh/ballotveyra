@@ -47,6 +47,7 @@ export default function Home() {
           <div className="hidden items-center gap-8 text-sm font-semibold text-[#3d4f64] md:flex">
             <Link href="#how-it-works" className="transition-colors hover:text-[#13877d]">How it works</Link>
             <Link href="#privacy" className="transition-colors hover:text-[#13877d]">Privacy</Link>
+            <Link href="/pricing" className="transition-colors hover:text-[#13877d]">Pricing</Link>
             <Link href="/help" className="transition-colors hover:text-[#13877d]">Help</Link>
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
@@ -161,7 +162,7 @@ export default function Home() {
       <footer className="border-t border-[#10243f]/8 bg-white">
         <div className="mx-auto flex max-w-[1180px] flex-col gap-5 px-5 py-8 text-sm text-[#718093] sm:px-8 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-2.5"><BrandMark /><span className="font-bold text-[#10243f]">BallotVeyra</span></div>
-          <div className="flex gap-5"><Link href="/privacy" className="hover:text-[#10243f]">Privacy</Link><Link href="/terms" className="hover:text-[#10243f]">Terms</Link><Link href="/help" className="hover:text-[#10243f]">Help</Link></div>
+          <div className="flex gap-5"><Link href="/privacy" className="hover:text-[#10243f]">Privacy</Link><Link href="/terms" className="hover:text-[#10243f]">Terms</Link><Link href="/help" className="hover:text-[#10243f]">Help</Link><Link href="/pricing" className="hover:text-[#10243f]">Pricing</Link></div>
         </div>
       </footer>
     </div>

@@ -25,6 +25,8 @@ export function AuthShell({ children, title, subtitle }: { children: React.React
         <div className="mt-8 text-center text-xs text-[#8a96a3]">
           <Link href="/privacy" className="hover:text-[#10243f]">Privacy</Link>
           <span className="mx-3">·</span>
+          <Link href="/pricing" className="hover:text-[#10243f]">Pricing</Link>
+          <span className="mx-3">·</span>
           <Link href="/help" className="hover:text-[#10243f]">Help</Link>
         </div>
       </section>
