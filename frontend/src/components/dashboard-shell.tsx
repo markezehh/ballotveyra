@@ -5,6 +5,7 @@ import { apiRequest } from "@/lib/api";
 const nav = [
   ["Overview", "/dashboard", "grid"],
   ["Elections", "/dashboard", "ballot"],
+  ["Manage Voters", "/dashboard/voters", "users"],
   ["Members", "/workspaces/northbridge/members", "users"],
 ];
 

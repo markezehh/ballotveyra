@@ -4,9 +4,9 @@ import { useState } from "react";
 import { Brand } from "@/components/brand";
 
 const choices = [
-	["amara", "Amara Okafor", "Student advocate and community organizer"],
-	["daniel", "Daniel Mensah", "Engineering student and debate captain"],
-	["sofia", "Sofia Reyes", "Alumni liaison and peer mentor"],
+	["amara", "Ezeh Mark", "Youth President and community organizer"],
+	["daniel", "Ugwu John", "Chief of Staff and student advocate"],
+	["sofia", "Onyia Samson", "Alumni liaison and peer mentor"],
 ];
 
 export function VoterExperience() {

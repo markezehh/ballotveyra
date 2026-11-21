@@ -1,7 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import { createServer } from "node:http";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomBytes, randomUUID } from "node:crypto";
 
 const app = express();
 
@@ -434,6 +434,129 @@ app.get("/api/elections/:id/results", async (req, res) => {
     const options = election.options.map((option) => ({ id: option.id, label: option.label, count: option._count.ballots }));
     const ballotsCast = options.reduce((sum, option) => sum + option.count, 0);
     res.json({ tally: election.result?.tally ?? { options, eligibleCount: election.eligibleCount ?? election.voters.length, ballotsCast, turnout: election.eligibleCount ? ballotsCast / election.eligibleCount : 0 } });
+  } catch (error) {
+    const { toErrorResponse } = await import("./src/errors.js");
+    const response = toErrorResponse(error);
+    res.status(response.status).json(response.body);
+  }
+});
+
+app.post("/api/elections/:id/voters/:voterId/invite", async (req, res) => {
+  try {
+    const account = await requireAccount(req, res);
+    if (!account) return;
+    const { prisma } = await import("./src/db.js");
+
+    const election = await prisma.election.findUnique({
+      where: { id: req.params.id },
+      include: { voters: { where: { id: req.params.voterId } } },
+    });
+    if (!election) return res.status(404).json({ code: "NOT_FOUND", message: "Election not found" });
+
+    const membership = await prisma.workspaceMember.findUnique({
+      where: { workspaceId_organizerId: { workspaceId: election.workspaceId, organizerId: account.id } },
+    });
+    if (!membership || !["OWNER", "MANAGER"].includes(membership.role)) {
+      return res.status(403).json({ code: "FORBIDDEN", message: "You do not have permission for this action" });
+    }
+
+    const voter = election.voters[0];
+    if (!voter) return res.status(404).json({ code: "NOT_FOUND", message: "Eligible voter not found" });
+    if (voter.redeemed) return res.status(409).json({ code: "CONFLICT", message: "This voter has already submitted a ballot" });
+
+    let latestVersion = 0;
+    let latestSecret = "";
+    for (const entry of String(process.env.INVITE_HMAC_KEYS ?? "").split(",")) {
+      const separator = entry.indexOf(":");
+      if (separator < 1) continue;
+      const version = Number(entry.slice(0, separator));
+      const secret = entry.slice(separator + 1);
+      if (Number.isInteger(version) && version > latestVersion && secret.length >= 32) {
+        latestVersion = version;
+        latestSecret = secret;
+      }
+    }
+    if (!latestSecret) {
+      return res.status(500).json({ code: "CONFIGURATION_ERROR", message: "INVITE_HMAC_KEYS are not configured" });
+    }
+
+    const rawToken = randomBytes(32).toString("base64url");
+    const tokenDigest = createHmac("sha256", latestSecret).update(rawToken).digest("hex");
+
+    await prisma.eligibleVoter.update({
+      where: { id: voter.id },
+      data: { tokenDigest, keyVersion: latestVersion, redeemed: false },
+    });
+
+    const requestOrigin = typeof req.headers.origin === "string" ? req.headers.origin : "";
+    const appOrigin = process.env.APP_ORIGIN || (allowedOrigins.includes(requestOrigin) ? requestOrigin : "https://ballotveyra.vercel.app");
+    const invitationUrl = `${appOrigin.replace(/\/$/, "")}/vote/${encodeURIComponent(election.slug)}#token=${rawToken}`;
+
+    res.status(201).json({ invitationUrl, voterId: voter.id });
+  } catch (error) {
+    const { toErrorResponse } = await import("./src/errors.js");
+    const response = toErrorResponse(error);
+    res.status(response.status).json(response.body);
+  }
+});
+
+app.post("/api/elections/:id/voters/invite-all", async (req, res) => {
+  try {
+    const account = await requireAccount(req, res);
+    if (!account) return;
+    const { prisma } = await import("./src/db.js");
+
+    const election = await prisma.election.findUnique({
+      where: { id: req.params.id },
+      include: { voters: { where: { redeemed: false } } },
+    });
+    if (!election) return res.status(404).json({ code: "NOT_FOUND", message: "Election not found" });
+
+    const membership = await prisma.workspaceMember.findUnique({
+      where: { workspaceId_organizerId: { workspaceId: election.workspaceId, organizerId: account.id } },
+    });
+    if (!membership || !["OWNER", "MANAGER"].includes(membership.role)) {
+      return res.status(403).json({ code: "FORBIDDEN", message: "You do not have permission for this action" });
+    }
+
+    let latestVersion = 0;
+    let latestSecret = "";
+    for (const entry of String(process.env.INVITE_HMAC_KEYS ?? "").split(",")) {
+      const separator = entry.indexOf(":");
+      if (separator < 1) continue;
+      const version = Number(entry.slice(0, separator));
+      const secret = entry.slice(separator + 1);
+      if (Number.isInteger(version) && version > latestVersion && secret.length >= 32) {
+        latestVersion = version;
+        latestSecret = secret;
+      }
+    }
+    if (!latestSecret) {
+      return res.status(500).json({ code: "CONFIGURATION_ERROR", message: "INVITE_HMAC_KEYS are not configured" });
+    }
+
+    const requestOrigin = typeof req.headers.origin === "string" ? req.headers.origin : "";
+    const appOrigin = process.env.APP_ORIGIN || (allowedOrigins.includes(requestOrigin) ? requestOrigin : "https://ballotveyra.vercel.app");
+
+    const invitations = await prisma.$transaction(async (tx) => {
+      const issued = [];
+      for (const voter of election.voters) {
+        const rawToken = randomBytes(32).toString("base64url");
+        const tokenDigest = createHmac("sha256", latestSecret).update(rawToken).digest("hex");
+        await tx.eligibleVoter.update({
+          where: { id: voter.id },
+          data: { tokenDigest, keyVersion: latestVersion, redeemed: false },
+        });
+        issued.push({
+          voterId: voter.id,
+          email: voter.email,
+          invitationUrl: `${appOrigin.replace(/\/$/, "")}/vote/${encodeURIComponent(election.slug)}#token=${rawToken}`,
+        });
+      }
+      return issued;
+    });
+
+    res.status(201).json({ invited: invitations.length, invitations });
   } catch (error) {
     const { toErrorResponse } = await import("./src/errors.js");
     const response = toErrorResponse(error);
