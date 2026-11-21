@@ -53,8 +53,8 @@ export default function ElectionDetailPage() {
       setAccount(me.account);
       setWorkspace(workspaces.workspaces[0] ?? null);
       setElection(detail.election);
-      setWindowOpen(toDateTimeLocal(detail.election.opensAt));
-      setWindowClose(toDateTimeLocal(detail.election.closesAt));
+      setWindowOpen(toDateTimeLocal(detail.election.opensAt, detail.election.timeZone));
+      setWindowClose(toDateTimeLocal(detail.election.closesAt, detail.election.timeZone));
       setTally(null);
       if (resultsAreAvailable(detail.election)) await loadResults();
     } catch (caught) { setStatus(caught instanceof Error ? caught.message : "Unable to load election"); }
@@ -109,12 +109,22 @@ export default function ElectionDetailPage() {
     }
   }
 
-  function toDateTimeLocal(value: string | null) {
+  function toDateTimeLocal(value: string | null, timeZone: string) {
     if (!value) return "";
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "";
-    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-    return local.toISOString().slice(0, 16);
+
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(date);
+    const values = Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}`;
   }
 
   async function saveVotingWindow() {
@@ -124,13 +134,13 @@ export default function ElectionDetailPage() {
       const data = await apiRequest<{ election: any }>(`/api/elections/${id}/voting-window`, {
         method: "PATCH",
         body: JSON.stringify({
-          opensAt: windowOpen ? new Date(windowOpen).toISOString() : null,
-          closesAt: windowClose ? new Date(windowClose).toISOString() : null,
+          opensAt: windowOpen || null,
+          closesAt: windowClose || null,
         }),
       });
       setElection(data.election);
-      setWindowOpen(toDateTimeLocal(data.election.opensAt));
-      setWindowClose(toDateTimeLocal(data.election.closesAt));
+      setWindowOpen(toDateTimeLocal(data.election.opensAt, data.election.timeZone));
+      setWindowClose(toDateTimeLocal(data.election.closesAt, data.election.timeZone));
       setStatus("Voting window updated.");
     } catch (caught) {
       setStatus(caught instanceof Error ? caught.message : "Unable to update voting window");

@@ -699,10 +699,10 @@ app.patch("/api/elections/:id/voting-window", async (req, res) => {
 
     const opensValue = req.body?.opensAt ? String(req.body.opensAt) : null;
     const closesValue = req.body?.closesAt ? String(req.body.closesAt) : null;
-    const opensAt = opensValue ? new Date(opensValue) : null;
-    const closesAt = closesValue ? new Date(closesValue) : null;
+    const opensAt = opensValue ? zonedDateTimeToUtc(opensValue, election.timeZone) : null;
+    const closesAt = closesValue ? zonedDateTimeToUtc(closesValue, election.timeZone) : null;
 
-    if ((opensValue && Number.isNaN(opensAt?.getTime())) || (closesValue && Number.isNaN(closesAt?.getTime()))) {
+    if ((opensValue && !opensAt) || (closesValue && !closesAt)) {
       return res.status(422).json({ code: "VALIDATION_ERROR", message: "Enter valid voting window dates" });
     }
     if (opensAt && closesAt && closesAt <= opensAt) {
@@ -733,6 +733,47 @@ app.patch("/api/elections/:id/voting-window", async (req, res) => {
     res.status(response.status).json(response.body);
   }
 });
+
+function zonedDateTimeToUtc(value, timeZone) {
+  if (!value) return null;
+  if (/([zZ]|[+-]\d{2}:?\d{2})$/.test(value)) {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  const match = /^([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2})(?:([:]([0-9]{2}))?)?$/.exec(value);
+  if (!match) return null;
+
+  const [, year, month, day, hour, minute, , second = "00"] = match;
+  const desiredUtc = Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
+  let guess = desiredUtc;
+
+  for (let index = 0; index < 3; index += 1) {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(new Date(guess));
+    const values = Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
+    const representedUtc = Date.UTC(
+      Number(values.year),
+      Number(values.month) - 1,
+      Number(values.day),
+      Number(values.hour),
+      Number(values.minute),
+      Number(values.second),
+    );
+    guess = desiredUtc - (representedUtc - guess);
+  }
+
+  const date = new Date(guess);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
 
 app.use((req, res) => {
   res.status(404).json({ error: "Not found" });
