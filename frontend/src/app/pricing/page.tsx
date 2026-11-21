@@ -15,6 +15,15 @@ const included = [
 
 export default function PricingPage() {
 	const [voters, setVoters] = useState(500);
+	const [currency, setCurrency] = useState<"USD" | "NGN">("USD");
+	const usdPerVoter = 0.95;
+	const nairaPerDollar = 1440;
+	const estimatedUsd = voters * usdPerVoter;
+	const estimatedNaira = estimatedUsd * nairaPerDollar;
+	const unitPrice = currency === "USD" ? "$0.95" : "₦1,368";
+	const estimatedTotal = currency === "USD"
+		? `$${estimatedUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+		: `₦${estimatedNaira.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 
 	return (
 		<div className="min-h-screen bg-[#fbfcfa]">
@@ -89,7 +98,7 @@ export default function PricingPage() {
 							<p className="text-sm font-bold text-[#13877d]">One election plan</p>
 							<div className="mt-5 flex items-end gap-2">
 								<span className="text-7xl font-bold tracking-[-0.06em] text-[#10243f]">
-									$1
+									{unitPrice}
 								</span>
 								<span className="pb-3 text-base font-bold text-[#718093]">
 									per eligible voter
@@ -145,6 +154,24 @@ export default function PricingPage() {
 							<p className="mt-3 text-sm leading-6 text-[#bdc9d5]">
 								Enter or select the number of eligible voters in your roster.
 							</p>
+							<div className="mt-5 inline-flex rounded-lg border border-white/10 bg-white/[0.05] p-1" aria-label="Currency view">
+								<button
+									type="button"
+									aria-pressed={currency === "USD"}
+									onClick={() => setCurrency("USD")}
+									className={`h-9 rounded-md px-3 text-xs font-bold ${currency === "USD" ? "bg-[#68d4c7] text-[#10243f]" : "text-[#bdc9d5]"}`}
+								>
+									See in USD
+								</button>
+								<button
+									type="button"
+									aria-pressed={currency === "NGN"}
+									onClick={() => setCurrency("NGN")}
+									className={`h-9 rounded-md px-3 text-xs font-bold ${currency === "NGN" ? "bg-[#68d4c7] text-[#10243f]" : "text-[#bdc9d5]"}`}
+								>
+									See in Naira
+								</button>
+							</div>
 
 							<div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.06] p-5 sm:p-6">
 								<label className="block">
@@ -209,9 +236,9 @@ export default function PricingPage() {
 
 								<div className="mt-7 border-t border-white/10 pt-5">
 									<div className="flex items-center justify-between text-sm text-[#bdc9d5]">
-										<span>{voters.toLocaleString()} eligible voters × $1</span>
+										<span>{voters.toLocaleString()} eligible voters × {unitPrice}</span>
 										<span className="font-bold text-white">
-											${voters.toLocaleString()}
+											{estimatedTotal}
 										</span>
 									</div>
 									<div className="mt-4 flex items-end justify-between gap-4">
@@ -219,7 +246,7 @@ export default function PricingPage() {
 											Estimated total
 										</p>
 										<p className="text-5xl font-bold tabular-nums text-[#68d4c7]">
-											${voters.toLocaleString()}
+											{estimatedTotal}
 										</p>
 									</div>
 								</div>
