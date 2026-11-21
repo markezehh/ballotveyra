@@ -26,27 +26,43 @@ export async function importVoters(electionId, organizerId, rows) {
 
   const keys = new Set();
   const emails = new Set();
+  const normalizedRows = [];
   for (const row of rows) {
-    const voterKey = String(row.voterKey ?? row.voter_key ?? "").trim().toLowerCase();
-    const email = row.email ? String(row.email).trim().toLowerCase() : null;
-    if (!voterKey || keys.has(voterKey) || (email && emails.has(email))) {
-      throw error(422, "VALIDATION_ERROR", "Voter keys must be unique and email addresses must be unique");
+    const voterKey = String(row.voterKey ?? row.voter_key ?? "").normalize("NFKC").trim().toLowerCase();
+    const email = row.email ? String(row.email).normalize("NFKC").trim().toLowerCase() : voterKey;
+    if (!voterKey || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw error(422, "VALIDATION_ERROR", "Every voter must have a valid email address");
+    }
+    if (keys.has(voterKey) || emails.has(email)) {
+      throw error(422, "VALIDATION_ERROR", "Voter keys and email addresses must be unique within the import");
     }
     keys.add(voterKey);
-    if (email) emails.add(email);
+    emails.add(email);
+    normalizedRows.push({
+      electionId,
+      voterKey,
+      email,
+      displayName: row.displayName ? String(row.displayName).trim() : email.split("@")[0],
+    });
   }
 
+  let accepted = 0;
   await prisma.$transaction(async (tx) => {
-    await tx.eligibleVoter.createMany({
-      data: rows.map((row) => ({
-        electionId,
-        voterKey: String(row.voterKey ?? row.voter_key).trim().toLowerCase(),
-        email: row.email ? String(row.email).trim().toLowerCase() : null,
-        displayName: row.displayName ? String(row.displayName).trim() : null,
-      })),
-      skipDuplicates: true,
+    const existing = await tx.eligibleVoter.findMany({
+      where: { electionId },
+      select: { voterKey: true, email: true },
     });
-    await tx.election.update({ where: { id: electionId }, data: { eligibleCount: keys.size } });
+    const existingKeys = new Set(existing.map((voter) => voter.voterKey));
+    const existingEmails = new Set(existing.map((voter) => voter.email).filter(Boolean));
+    const newRows = normalizedRows.filter((row) => !existingKeys.has(row.voterKey) && !existingEmails.has(row.email));
+
+    if (newRows.length) {
+      await tx.eligibleVoter.createMany({ data: newRows, skipDuplicates: true });
+    }
+    accepted = newRows.length;
+
+    const total = await tx.eligibleVoter.count({ where: { electionId } });
+    await tx.election.update({ where: { id: electionId }, data: { eligibleCount: total } });
   });
-  return { accepted: keys.size, rejected: 0 };
+  return { accepted, rejected: normalizedRows.length - accepted };
 }

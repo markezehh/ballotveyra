@@ -314,21 +314,68 @@ app.post("/api/elections/:id/voters", async (req, res) => {
     const membership = await prisma.workspaceMember.findUnique({ where: { workspaceId_organizerId: { workspaceId: election.workspaceId, organizerId: account.id } } });
     if (!membership || !["OWNER", "MANAGER"].includes(membership.role)) return res.status(403).json({ code: "FORBIDDEN", message: "You do not have permission for this action" });
     if (election.status !== "DRAFT") return res.status(409).json({ code: "CONFLICT", message: "The roster is locked after activation" });
-    const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+    const rawRows = Array.isArray(req.body)
+      ? req.body.map((email) => typeof email === "string" ? { voterKey: email, email } : email)
+      : Array.isArray(req.body?.rows)
+        ? req.body.rows
+        : Array.isArray(req.body?.emails)
+          ? req.body.emails.map((email) => typeof email === "string" ? { voterKey: email, email } : email)
+          : Array.isArray(req.body?.voterEmails)
+            ? req.body.voterEmails.map((email) => typeof email === "string" ? { voterKey: email, email } : email)
+            : typeof req.body === "string"
+              ? req.body.split(/\r?\n|,/).map((email) => ({ voterKey: email, email }))
+              : typeof req.body?.emails === "string"
+                ? req.body.emails.split(/\r?\n|,/).map((email) => ({ voterKey: email, email }))
+                : typeof req.body?.voterEmails === "string"
+                  ? req.body.voterEmails.split(/\r?\n|,/).map((email) => ({ voterKey: email, email }))
+                  : [];
+    const rows = rawRows.filter((row) => {
+      const email = typeof row === "string" ? row : row?.email ?? row?.voterKey ?? row?.voter_key;
+      return String(email ?? "").trim();
+    });
     if (!rows.length || rows.length > 1000) return res.status(422).json({ code: "VALIDATION_ERROR", message: "Import 1–1000 voters" });
+
+    const normalizedRows = [];
     const keys = new Set();
     const emails = new Set();
     for (const row of rows) {
-      const voterKey = String(row.voterKey ?? row.voter_key ?? "").trim().toLowerCase();
-      const email = row.email ? String(row.email).trim().toLowerCase() : null;
-      if (!voterKey || keys.has(voterKey) || (email && emails.has(email))) return res.status(422).json({ code: "VALIDATION_ERROR", message: "Voter keys must be unique and email addresses must be unique" });
-      keys.add(voterKey); if (email) emails.add(email);
+      const voterKey = String(typeof row === "string" ? row : row.voterKey ?? row.voter_key ?? row.email ?? "").normalize("NFKC").trim().toLowerCase();
+      const email = String(typeof row === "string" ? row : row.email ?? voterKey).normalize("NFKC").trim().toLowerCase();
+      if (!voterKey || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return res.status(422).json({ code: "VALIDATION_ERROR", message: "Every voter must have a valid email address" });
+      }
+      if (keys.has(voterKey) || emails.has(email)) {
+        return res.status(422).json({ code: "VALIDATION_ERROR", message: "Voter keys and email addresses must be unique within the import" });
+      }
+      keys.add(voterKey);
+      emails.add(email);
+      normalizedRows.push({
+        electionId: election.id,
+        voterKey,
+        email,
+        displayName: row.displayName ? String(row.displayName).trim() : email.split("@")[0],
+      });
     }
+
+    let accepted = 0;
     await prisma.$transaction(async (tx) => {
-      await tx.eligibleVoter.createMany({ data: rows.map((row) => ({ electionId: election.id, voterKey: String(row.voterKey ?? row.voter_key).trim().toLowerCase(), email: row.email ? String(row.email).trim().toLowerCase() : null, displayName: row.displayName ? String(row.displayName).trim() : null })), skipDuplicates: true });
-      await tx.election.update({ where: { id: election.id }, data: { eligibleCount: keys.size } });
+      const existing = await tx.eligibleVoter.findMany({
+        where: { electionId: election.id },
+        select: { voterKey: true, email: true },
+      });
+      const existingKeys = new Set(existing.map((voter) => voter.voterKey));
+      const existingEmails = new Set(existing.map((voter) => voter.email).filter(Boolean));
+      const newRows = normalizedRows.filter((row) => !existingKeys.has(row.voterKey) && !existingEmails.has(row.email));
+
+      if (newRows.length) {
+        await tx.eligibleVoter.createMany({ data: newRows, skipDuplicates: true });
+      }
+      accepted = newRows.length;
+
+      const total = await tx.eligibleVoter.count({ where: { electionId: election.id } });
+      await tx.election.update({ where: { id: election.id }, data: { eligibleCount: total } });
     });
-    res.status(201).json({ accepted: keys.size, rejected: 0 });
+    res.status(201).json({ accepted, rejected: normalizedRows.length - accepted });
   } catch (error) {
     const { toErrorResponse } = await import("./src/errors.js");
     const response = toErrorResponse(error);

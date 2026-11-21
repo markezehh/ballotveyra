@@ -53,11 +53,29 @@ export default function ElectionDetailPage() {
 
   async function importVoters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const rows = String(form.get("voters") ?? "").split(/\n|,/).map((value) => value.trim()).filter(Boolean).map((email, index) => ({ voterKey: email, email, displayName: email.split("@")[0] }));
-    if (!rows.length) { setStatus("Enter at least one voter email."); return; }
-    try { const result = await apiRequest<{ accepted: number }>(`/api/elections/${id}/voters`, { method: "POST", body: JSON.stringify({ rows }) }); setStatus(`${result.accepted} voters imported.`); await load(); event.currentTarget.reset(); }
-    catch (caught) { setStatus(caught instanceof Error ? caught.message : "Unable to import voters"); }
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    const emails = String(formData.get("voters") ?? "")
+      .split(/\n|,/)
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean);
+    if (!emails.length) { setStatus("Enter at least one voter email."); return; }
+
+    const invalid = emails.find((email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+    if (invalid) { setStatus(`Invalid email address: ${invalid}`); return; }
+
+    const uniqueEmails = Array.from(new Set(emails));
+    if (uniqueEmails.length !== emails.length) { setStatus("Remove duplicate email addresses before importing."); return; }
+
+    const rows = uniqueEmails.map((email) => ({ voterKey: email, email, displayName: email.split("@")[0] }));
+    try {
+      const result = await apiRequest<{ accepted: number; rejected: number }>(`/api/elections/${id}/voters`, { method: "POST", body: JSON.stringify({ rows }) });
+      setStatus(result.rejected ? `${result.accepted} voters imported; ${result.rejected} already existed.` : `${result.accepted} voters imported.`);
+      await load();
+      form.reset();
+    } catch (caught) {
+      setStatus(caught instanceof Error ? caught.message : "Unable to import voters");
+    }
   }
 
   const turnout = election?.eligibleCount ? (election.ballotsCast / election.eligibleCount) * 100 : 0;
