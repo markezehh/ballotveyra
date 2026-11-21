@@ -610,24 +610,50 @@ app.post("/api/public/elections/:slug/vote", async (req, res) => {
   try {
     const rawToken = String(req.body?.token ?? "").trim();
     const optionId = String(req.body?.optionId ?? "").trim();
-    if (!rawToken) return res.status(401).json({ code: "UNAUTHORIZED", message: "A valid invitation token is required" });
 
     const { prisma } = await import("./src/db.js");
-    const digests = [];
-    for (const entry of String(process.env.INVITE_HMAC_KEYS ?? "").split(",")) {
-      const separator = entry.indexOf(":");
-      if (separator < 1) continue;
-      const secret = entry.slice(separator + 1);
-      if (secret.length >= 32) digests.push(createHmac("sha256", secret).update(rawToken).digest("hex"));
-    }
-    if (!digests.length) return res.status(500).json({ code: "CONFIGURATION_ERROR", message: "INVITE_HMAC_KEYS are not configured" });
-
     const election = await prisma.election.findUnique({ where: { slug: req.params.slug }, include: { options: true } });
     if (!election) return res.status(404).json({ code: "NOT_FOUND", message: "Election not found" });
 
-    const voter = await prisma.eligibleVoter.findFirst({ where: { electionId: election.id, tokenDigest: { in: digests } } });
-    if (!voter) return res.status(404).json({ code: "NOT_FOUND", message: "This invitation is not valid" });
-    if (voter.redeemed) return res.json({ alreadyRecorded: true });
+    if (rawToken) {
+      const digests = [];
+      for (const entry of String(process.env.INVITE_HMAC_KEYS ?? "").split(",")) {
+        const separator = entry.indexOf(":");
+        if (separator < 1) continue;
+        const secret = entry.slice(separator + 1);
+        if (secret.length >= 32) digests.push(createHmac("sha256", secret).update(rawToken).digest("hex"));
+      }
+      if (!digests.length) return res.status(500).json({ code: "CONFIGURATION_ERROR", message: "INVITE_HMAC_KEYS are not configured" });
+
+      const voter = await prisma.eligibleVoter.findFirst({ where: { electionId: election.id, tokenDigest: { in: digests } } });
+      if (!voter) return res.status(404).json({ code: "NOT_FOUND", message: "This invitation is not valid" });
+      if (voter.redeemed) return res.json({ alreadyRecorded: true });
+
+      if (election.status !== "SCHEDULED") return res.status(409).json({ code: "CONFLICT", message: "Voting is not available" });
+
+      const dbNow = await prisma.$queryRaw`SELECT now() AS now`;
+      const now = dbNow[0]?.now;
+      if (election.opensAt && (!now || now < election.opensAt)) return res.status(409).json({ code: "CONFLICT", message: "Voting has not opened" });
+      if (election.closesAt && now && now >= election.closesAt) return res.status(409).json({ code: "CONFLICT", message: "Voting has closed" });
+
+      const option = election.options.find((candidate) => candidate.id === optionId);
+      if (!option) return res.status(422).json({ code: "VALIDATION_ERROR", message: "Select a valid ballot option" });
+
+      await prisma.$transaction(async (tx) => {
+        const current = await tx.eligibleVoter.findUnique({ where: { id: voter.id } });
+        if (current?.redeemed) return;
+        await tx.eligibleVoter.update({ where: { id: voter.id }, data: { redeemed: true } });
+        await tx.ballot.create({
+          data: {
+            id: createHash("sha256").update(`${rawToken}:${optionId}`).digest("hex").slice(0, 32),
+            electionId: election.id,
+            optionId,
+          },
+        });
+      });
+      return res.status(201).json({ alreadyRecorded: false });
+    }
+
     if (election.status !== "SCHEDULED") return res.status(409).json({ code: "CONFLICT", message: "Voting is not available" });
 
     const dbNow = await prisma.$queryRaw`SELECT now() AS now`;
@@ -638,17 +664,12 @@ app.post("/api/public/elections/:slug/vote", async (req, res) => {
     const option = election.options.find((candidate) => candidate.id === optionId);
     if (!option) return res.status(422).json({ code: "VALIDATION_ERROR", message: "Select a valid ballot option" });
 
-    await prisma.$transaction(async (tx) => {
-      const current = await tx.eligibleVoter.findUnique({ where: { id: voter.id } });
-      if (current?.redeemed) return;
-      await tx.eligibleVoter.update({ where: { id: voter.id }, data: { redeemed: true } });
-      await tx.ballot.create({
-        data: {
-          id: createHash("sha256").update(`${rawToken}:${optionId}`).digest("hex").slice(0, 32),
-          electionId: election.id,
-          optionId,
-        },
-      });
+    await prisma.ballot.create({
+      data: {
+        id: randomUUID(),
+        electionId: election.id,
+        optionId,
+      },
     });
     res.status(201).json({ alreadyRecorded: false });
   } catch (error) {

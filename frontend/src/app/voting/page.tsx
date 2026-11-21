@@ -41,18 +41,13 @@ export function VoterExperience() {
 
   async function submitBallot() {
     if (!election || !selected) return;
-    const token = window.location.hash.replace(/^#token=/, "");
-    if (!token) {
-      setError("A secure invitation link is required to submit this ballot.");
-      return;
-    }
 
     setSubmitting(true);
     setError("");
     try {
       await apiRequest(`/api/public/elections/${encodeURIComponent(election.slug)}/vote`, {
         method: "POST",
-        body: JSON.stringify({ token, optionId: selected }),
+        body: JSON.stringify({ optionId: selected }),
       });
       setStep("done");
     } catch (caught) {
@@ -70,7 +65,7 @@ export function VoterExperience() {
             <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth="2"><path d="m5 12 4 4L19 7" /></svg>
           </div>
           <h1 className="mt-5 text-2xl font-bold text-[#10243f]">Your ballot was submitted</h1>
-          <p className="mt-3 leading-7 text-[#6d7b8b]">Thank you for participating. This invitation has now been used.</p>
+          <p className="mt-3 leading-7 text-[#6d7b8b]">Thank you for participating. Your vote has been recorded.</p>
         </section>
       </main>
     );
@@ -97,7 +92,7 @@ export function VoterExperience() {
               )}
 
               <div className="border-b border-[#10243f]/8 pb-5">
-                <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#13877d]">Private election</p>
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#13877d]">Public demo election</p>
                 <h1 className="mt-2 text-2xl font-bold text-[#10243f]">{election.title}</h1>
                 {election.description && <p className="mt-2 text-sm text-[#8793a1]">{election.description}</p>}
                 <p className="mt-2 text-sm text-[#8793a1]">{election.workspace.name} · {election.timeZone}</p>
