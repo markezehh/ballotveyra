@@ -204,18 +204,6 @@ async function ensurePersonalWorkspace(account) {
   });
 }
 
-function electionStatus(election) {
-  if (election.status === "DRAFT") return "Draft";
-  if (election.status === "CANCELLED") return "Cancelled";
-  if (election.status === "PUBLISHED") return "Published";
-  if(election.status === "SCHEDULED") return "Scheduled";
-  if (election.status === "CLOSED") return "Closed";
-  const now = new Date();
-  if (election.opensAt && now < new Date(election.opensAt)) return "Scheduled";
-  if (election.closesAt && now >= new Date(election.closesAt)) return "Closed";
-  return election.status === "SCHEDULED" ? "Open" : election.status;
-}
-
 app.get("/api/workspaces", async (req, res) => {
   try {
     const account = await requireAccount(req, res);
@@ -394,9 +382,8 @@ app.post("/api/elections/:id/activate", async (req, res) => {
     const membership = await prisma.workspaceMember.findUnique({ where: { workspaceId_organizerId: { workspaceId: election.workspaceId, organizerId: account.id } } });
     if (!membership || !["OWNER", "MANAGER"].includes(membership.role)) return res.status(403).json({ code: "FORBIDDEN", message: "You do not have permission for this action" });
     if (election.options.length < 2) return res.status(409).json({ code: "CONFLICT", message: "Configure at least two ballot choices first" });
-    const status = !election.opensAt || election.opensAt <= new Date() ? "SCHEDULED" : "SCHEDULED";
-    const updated = await prisma.election.update({ where: { id: election.id }, data: { status } });
-    res.json({ election: { ...updated, statusLabel: electionStatus(updated) } });
+    const updated = await prisma.election.update({ where: { id: election.id }, data: { status: "SCHEDULED" } });
+    res.json({ election: { ...updated } });
   } catch (error) {
     const { toErrorResponse } = await import("./src/errors.js");
     const response = toErrorResponse(error);
@@ -414,7 +401,7 @@ app.post("/api/elections/:id/close", async (req, res) => {
     const membership = await prisma.workspaceMember.findUnique({ where: { workspaceId_organizerId: { workspaceId: election.workspaceId, organizerId: account.id } } });
     if (!membership || !["OWNER", "MANAGER"].includes(membership.role)) return res.status(403).json({ code: "FORBIDDEN", message: "You do not have permission for this action" });
     const updated = await prisma.election.update({ where: { id: election.id }, data: { status: "CLOSED", endedEarlyAt: new Date(), closesAt: new Date() } });
-    res.json({ election: { ...updated, statusLabel: "Closed" } });
+    res.json({ election: { ...updated } });
   } catch (error) {
     const { toErrorResponse } = await import("./src/errors.js");
     const response = toErrorResponse(error);
@@ -800,7 +787,7 @@ app.patch("/api/elections/:id/voting-window", async (req, res) => {
         closesAt: updated.closesAt,
       },
     });
-    res.json({ election: { ...updated, statusLabel: electionStatus(updated) } });
+    res.json({ election: { ...updated } });
   } catch (error) {
     const { toErrorResponse } = await import("./src/errors.js");
     const response = toErrorResponse(error);

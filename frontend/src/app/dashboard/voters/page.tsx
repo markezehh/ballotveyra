@@ -17,7 +17,7 @@ type Election = {
   id: string;
   slug: string;
   title: string;
-  statusLabel: string;
+  status: string;
   voters: Voter[];
 };
 
@@ -149,7 +149,7 @@ export default function ManageVotersPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="w-fit rounded-full bg-[#edf4f3] px-2.5 py-1 text-xs font-bold text-[#617083]">
-                    {election.statusLabel}
+                    {election.status}
                   </span>
                   <button
                     type="button"

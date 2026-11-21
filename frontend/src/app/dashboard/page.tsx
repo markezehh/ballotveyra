@@ -9,7 +9,7 @@ type Election = {
   id: string;
   slug: string;
   title: string;
-  statusLabel: string;
+  status: string;
   eligibleCount: number;
   ballotsCast: number;
 };
@@ -55,15 +55,14 @@ export default function DashboardPage() {
   const visible = useMemo(
     () =>
       elections.filter((election) => {
-        if (filter === "Active") return ["Open", "Scheduled", "Published"].includes(election.statusLabel);
-       // console.log('Filtering elections with filter:', filter, 'Election status:', election.statusLabel);
-        if (filter === "Closed") return election.statusLabel === "Closed";
+        if (filter === "Active") return ["SCHEDULED", "PUBLISHED"].includes(election.status);
+        if (filter === "Closed") return election.status === "CLOSED";
         return true;
       }),
     [elections, filter]
   );
 
-  const active = elections.filter((election) => ["Open", "Scheduled", "Published"].includes(election.statusLabel)).length;
+  const active = elections.filter((election) => ["SCHEDULED", "PUBLISHED"].includes(election.status)).length;
   const ballots = elections.reduce((sum, election) => sum + election.ballotsCast, 0);
   const eligible = elections.reduce((sum, election) => sum + election.eligibleCount, 0);
   const firstName = account?.firstName || "there";
@@ -162,16 +161,16 @@ export default function DashboardPage() {
                       <td className="px-5 py-4">
                         <span
                           className={`rounded-full px-2.5 py-1 text-xs font-bold ${
-                            election.statusLabel === "Open"
+                            election.status === "SCHEDULED"
                               ? "bg-[#edf8f6] text-[#13877d]"
-                              : election.statusLabel === "Draft"
+                              : election.status === "DRAFT"
                               ? "bg-[#edf0f3] text-[#617083]"
-                              : election.statusLabel === "Published"
+                              : election.status === "PUBLISHED"
                               ? "bg-[#eef0ff] text-[#5962a9]"
                               : "bg-[#fff5df] text-[#9a7021]"
                           }`}
                         >
-                          {election.statusLabel}
+                          {election.status}
                         </span>
                       </td>
                       <td className="px-5 py-4 text-sm text-[#617083]">

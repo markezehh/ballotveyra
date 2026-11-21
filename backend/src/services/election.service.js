@@ -4,17 +4,6 @@ import { logService } from "./logger.js";
 
 logService("election", "service loaded");
 
-export function derivedStatus(election) {
-  if (election.status === "DRAFT") return "Draft";
-  if (election.status === "CANCELLED") return "Cancelled";
-  if (election.status === "PUBLISHED") return "Published";
-  if (election.status === "CLOSED") return "Closed";
-  const now = new Date();
-  if (election.opensAt && now < new Date(election.opensAt)) return "Scheduled";
-  if (election.closesAt && now >= new Date(election.closesAt)) return "Closed";
-  return election.status === "SCHEDULED" ? "Open" : election.status;
-}
-
 function apiError(status, code, message) {
   const error = new Error(message);
   error.status = status;
@@ -49,7 +38,6 @@ export async function listElections(organizerId) {
   });
   return elections.map((election) => ({
     ...election,
-    statusLabel: derivedStatus(election),
     ballotsCast: election._count.ballots,
     eligibleCount: election.eligibleCount ?? election.voters.length,
   }));
@@ -91,7 +79,7 @@ export async function createElection(organizerId, workspaceId, input) {
       where: { id: election.id },
       include: { options: true, voters: true, _count: { select: { ballots: true } } },
     });
-    return { ...result, statusLabel: derivedStatus(result), ballotsCast: result._count.ballots, eligibleCount: result.eligibleCount ?? result.voters.length };
+    return { ...result, ballotsCast: result._count.ballots, eligibleCount: result.eligibleCount ?? result.voters.length };
   });
 }
 
@@ -101,7 +89,7 @@ export async function getElection(electionId, organizerId) {
     include: { workspace: true, options: { orderBy: { position: "asc" } }, voters: true, result: true, _count: { select: { ballots: true } } },
   });
   if (!election) throw apiError(404, "NOT_FOUND", "Election not found");
-  return { ...election, statusLabel: derivedStatus(election), ballotsCast: election._count.ballots, eligibleCount: election.eligibleCount ?? election.voters.length };
+  return { ...election, ballotsCast: election._count.ballots, eligibleCount: election.eligibleCount ?? election.voters.length };
 }
 
 export async function replaceOptions(electionId, organizerId, labels) {
@@ -121,7 +109,7 @@ export async function activateElection(electionId, organizerId) {
   const election = await requireElectionManager(electionId, organizerId);
   if (election.options.length < 2) throw apiError(409, "CONFLICT", "Configure at least two ballot choices first");
   const updated = await prisma.election.update({ where: { id: electionId }, data: { status: "SCHEDULED" } });
-  return { ...updated, statusLabel: derivedStatus(updated) };
+  return updated;
 }
 
 export async function closeElection(electionId, organizerId) {
@@ -130,5 +118,5 @@ export async function closeElection(electionId, organizerId) {
     where: { id: electionId },
     data: { status: "CLOSED", endedEarlyAt: new Date(), closesAt: new Date() },
   });
-  return { ...updated, statusLabel: "Closed" };
+  return updated;
 }
