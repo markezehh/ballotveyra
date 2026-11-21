@@ -595,7 +595,6 @@ app.get("/api/public/elections/:slug", async (req, res) => {
 });
 
 async function assertBallotCapacity(tx, electionId, frozenEligibleCount) {
-  await tx.$queryRaw`SELECT id FROM ballotveyra."Election" WHERE id = ${electionId}::text FOR UPDATE`;
   const eligibleCount = frozenEligibleCount ?? await tx.eligibleVoter.count({ where: { electionId } });
 
   // A public/rosterless election has no configured ballot limit.
@@ -653,7 +652,6 @@ app.post("/api/public/elections/:slug/vote", async (req, res) => {
           throw error;
         }
 
-        await tx.$queryRaw`SELECT id FROM ballotveyra."EligibleVoter" WHERE id = ${voter.id}::text FOR UPDATE`;
         const current = await tx.eligibleVoter.findUnique({ where: { id: voter.id } });
         if (current?.redeemed) return { alreadyRecorded: true };
 
@@ -734,7 +732,7 @@ app.post("/api/public/elections/:slug/vote", async (req, res) => {
         data: { id: randomUUID(), electionId: election.id, optionId },
       });
       return { alreadyRecorded: false };
-    }, { timeout: 10000, maxWait: 2000 });
+    }, { timeout: 10000, maxWait: 2000, isolationLevel: "Serializable" });
 
     res.status(result.alreadyRecorded ? 200 : 201).json(result);
   } catch (error) {
