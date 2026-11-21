@@ -713,6 +713,19 @@ app.patch("/api/elections/:id/voting-window", async (req, res) => {
       where: { id: election.id },
       data: { opensAt, closesAt },
     });
+    console.log("[ELECTION] Voting window changed", {
+      electionId: election.id,
+      title: election.title,
+      organizerId: account.id,
+      previous: {
+        opensAt: election.opensAt,
+        closesAt: election.closesAt,
+      },
+      updated: {
+        opensAt: updated.opensAt,
+        closesAt: updated.closesAt,
+      },
+    });
     res.json({ election: { ...updated, statusLabel: electionStatus(updated) } });
   } catch (error) {
     const { toErrorResponse } = await import("./src/errors.js");
