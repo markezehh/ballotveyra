@@ -12,10 +12,10 @@ export async function redeemBallot(slug: string, rawToken: string, optionId: str
     const election = await tx.election.findUnique({ where: { slug }, include: { options: true } });
     if (!election) throw new ApiError(404, "NOT_FOUND", "Election not found");
 
-    await tx.$queryRaw`SELECT id FROM ballotveyra."Election" WHERE id = ${election.id}::uuid FOR SHARE`;
+    await tx.$queryRaw`SELECT id FROM ballotveyra."Election" WHERE id = ${election.id}::text FOR UPDATE`;
     const voter = await tx.eligibleVoter.findFirst({ where: { electionId: election.id, tokenDigest: digest } });
     if (!voter) throw new ApiError(404, "NOT_FOUND", "This invitation is not valid");
-    await tx.$queryRaw`SELECT id FROM ballotveyra."EligibleVoter" WHERE id = ${voter.id}::uuid FOR UPDATE`;
+    await tx.$queryRaw`SELECT id FROM ballotveyra."EligibleVoter" WHERE id = ${voter.id}::text FOR UPDATE`;
 
     if (voter.redeemed) return { alreadyRecorded: true };
     if (election.status !== "SCHEDULED" || !election.opensAt || !election.closesAt) throw new ApiError(409, "CONFLICT", "Voting is not available");
@@ -27,6 +27,12 @@ export async function redeemBallot(slug: string, rawToken: string, optionId: str
 
     const option = election.options.find((candidate) => candidate.id === optionId);
     if (!option) throw new ApiError(422, "VALIDATION_ERROR", "Select a valid ballot option");
+
+    const eligibleCount = election.eligibleCount ?? await tx.eligibleVoter.count({ where: { electionId: election.id } });
+    const ballotsCast = await tx.ballot.count({ where: { electionId: election.id } });
+    if (ballotsCast >= eligibleCount) {
+      throw new ApiError(409, "CONFLICT", "The election has reached its eligible voter ballot limit");
+    }
 
     await tx.eligibleVoter.update({
       where: { id: voter.id },

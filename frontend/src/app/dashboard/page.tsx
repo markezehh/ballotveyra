@@ -35,6 +35,20 @@ export default function DashboardPage() {
       })
       .catch((caught) => setError(caught instanceof Error ? caught.message : "Unable to load dashboard"))
       .finally(() => setLoading(false));
+
+    async function refreshElections() {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const electionData = await apiRequest<{ elections: Election[] }>("/api/elections");
+        setElections(electionData.elections);
+        setError("");
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : "Unable to refresh elections");
+      }
+    }
+
+    const intervalId = window.setInterval(refreshElections, 3000);
+    return () => window.clearInterval(intervalId);
   }, []);
 
   const visible = useMemo(
