@@ -607,7 +607,7 @@ app.get("/api/public/elections/:slug", async (req, res) => {
 });
 
 async function assertBallotCapacity(tx, electionId, frozenEligibleCount) {
-  await tx.$queryRaw`SELECT id FROM ballotveyra."Election" WHERE id = ${electionId}::uuid FOR UPDATE`;
+  await tx.$queryRaw`SELECT id FROM ballotveyra."Election" WHERE id = ${electionId}::text FOR UPDATE`;
   const eligibleCount = frozenEligibleCount ?? await tx.eligibleVoter.count({ where: { electionId } });
   const ballotsCast = await tx.ballot.count({ where: { electionId } });
   if (ballotsCast >= eligibleCount) {
@@ -635,8 +635,6 @@ app.post("/api/public/elections/:slug/vote", async (req, res) => {
         error.code = "NOT_FOUND";
         throw error;
       }
-
-      await assertBallotCapacity(tx, election.id, election.eligibleCount);
 
       if (rawToken) {
         const digests = [];
@@ -697,6 +695,7 @@ app.post("/api/public/elections/:slug/vote", async (req, res) => {
           throw error;
         }
 
+        await assertBallotCapacity(tx, election.id, election.eligibleCount);
         await tx.eligibleVoter.update({ where: { id: voter.id }, data: { redeemed: true } });
         await tx.ballot.create({
           data: {
@@ -738,6 +737,7 @@ app.post("/api/public/elections/:slug/vote", async (req, res) => {
         throw error;
       }
 
+      await assertBallotCapacity(tx, election.id, election.eligibleCount);
       await tx.ballot.create({
         data: { id: randomUUID(), electionId: election.id, optionId },
       });

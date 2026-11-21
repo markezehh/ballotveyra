@@ -51,7 +51,12 @@ export function VoterExperience() {
       });
       setStep("done");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to submit ballot");
+      const message = caught instanceof Error ? caught.message : "Unable to submit ballot";
+      setError(
+        message === "The election has reached its eligible voter ballot limit"
+          ? "Maximum number of votes reached for eligible voters"
+          : message,
+      );
     } finally {
       setSubmitting(false);
     }
