@@ -80,7 +80,7 @@ export default function PricingPage() {
 							Simple, transparent pricing
 						</p>
 						<h1 className="mx-auto mt-4 max-w-[760px] text-4xl font-bold leading-tight tracking-[-0.04em] text-[#10243f] sm:text-6xl">
-							Pay for the people you invite to vote.
+							Direct and simple pricing per eligible voter.
 						</h1>
 						<p className="mx-auto mt-5 max-w-[620px] text-lg leading-8 text-[#657487]">
 							One clear price for every election. No subscriptions, hidden platform
@@ -193,7 +193,7 @@ export default function PricingPage() {
 														: 1
 												);
 											}}
-											className="h-14 w-full bg-transparent text-3xl font-bold tabular-nums text-white outline-none"
+											className="h-14 w-full bg-transparent text-3xl font-bold tabular-nums text-white rounded-xl border-none outline-none"
 										/>
 										<span className="ml-3 text-sm font-semibold text-[#9fb0c0]">
 											voters
