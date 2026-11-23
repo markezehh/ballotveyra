@@ -7,7 +7,7 @@ import { apiRequest } from "@/lib/api";
 
 export default function NewElectionPage() {
   const router = useRouter();
-  const [choices, setChoices] = useState(["Amara Okafor", "Daniel Mensah"]);
+  const [choices, setChoices] = useState(["Candidate 1", "Candidate 2"]);
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
   const [account, setAccount] = useState<any>(null);
