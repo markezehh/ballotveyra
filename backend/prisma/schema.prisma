@@ -1,11 +1,13 @@
 generator client {
   provider = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
 }
 
 datasource db {
   provider     = "postgresql"
   url          = env("DATABASE_URL")
   relationMode = "prisma"
+  schemas      = ["ballotveyra"]
 }
 
 
@@ -13,6 +15,8 @@ enum WorkspaceRole {
   OWNER
   MANAGER
   OBSERVER
+
+  @@schema("ballotveyra")
 }
 
 enum ElectionStatus {
@@ -21,11 +25,15 @@ enum ElectionStatus {
   CLOSED
   PUBLISHED
   CANCELLED
+
+  @@schema("ballotveyra")
 }
 
 enum ResultVisibility {
   WORKSPACE
   PUBLIC
+
+  @@schema("ballotveyra")
 }
 
 model OrganizerProfile {
@@ -40,6 +48,7 @@ model OrganizerProfile {
   memberships   WorkspaceMember[]
 
   @@map("OrganizerProfile")
+  @@schema("ballotveyra")
 }
 
 model Workspace {
@@ -52,6 +61,7 @@ model Workspace {
   events    AuditEvent[]
 
   @@map("Workspace")
+  @@schema("ballotveyra")
 }
 
 model WorkspaceMember {
@@ -64,6 +74,7 @@ model WorkspaceMember {
   @@id([workspaceId, organizerId])
   @@index([organizerId])
   @@map("WorkspaceMember")
+  @@schema("ballotveyra")
 }
 
 model Election {
@@ -90,6 +101,7 @@ model Election {
 
   @@index([workspaceId, createdAt, id])
   @@map("Election")
+  @@schema("ballotveyra")
 }
 
 model BallotOption {
@@ -104,6 +116,7 @@ model BallotOption {
   @@unique([electionId, id])
   @@unique([electionId, position])
   @@map("BallotOption")
+  @@schema("ballotveyra")
 }
 
 model EligibleVoter {
@@ -121,6 +134,7 @@ model EligibleVoter {
   @@unique([electionId, phone])
   @@index([electionId, id])
   @@map("EligibleVoter")
+  @@schema("ballotveyra")
 }
 
 model Ballot {
@@ -132,6 +146,7 @@ model Ballot {
 
   @@index([electionId, optionId])
   @@map("Ballot")
+  @@schema("ballotveyra")
 }
 
 model ImportBatch {
@@ -144,6 +159,7 @@ model ImportBatch {
 
   @@id([electionId, batchKey])
   @@map("ImportBatch")
+  @@schema("ballotveyra")
 }
 
 model ResultSnapshot {
@@ -155,6 +171,7 @@ model ResultSnapshot {
   election    Election         @relation(fields: [electionId], references: [id], onDelete: Restrict)
 
   @@map("ResultSnapshot")
+  @@schema("ballotveyra")
 }
 
 model AuditEvent {
@@ -171,4 +188,5 @@ model AuditEvent {
   @@index([workspaceId, createdAt, id])
   @@index([electionId, createdAt, id])
   @@map("AuditEvent")
+  @@schema("ballotveyra")
 }
