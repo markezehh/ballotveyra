@@ -1,17 +1,16 @@
 import { createHash } from "node:crypto";
 import { prisma } from "../db.js";
 import { ApiError } from "../errors.js";
+import { normalizePhone } from "../phone.js";
 
 export type ImportRow = {
-  voter_key: string;
-  email?: string;
+  phone: string;
   display_name?: string;
 };
 
 export function canonicalImportDigest(rows: ImportRow[]): string {
   const payload = rows.map((row) => ({
-    voter_key: row.voter_key.normalize("NFKC").trim().toLocaleLowerCase(),
-    email: row.email ? row.email.normalize("NFKC").trim().toLocaleLowerCase() : null,
+    phone: normalizePhone(row.phone) ?? row.phone,
     display_name: row.display_name?.trim() || null,
   }));
   return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
@@ -32,32 +31,30 @@ export async function importRosterBatch(electionId: string, batchKey: string, ro
       return prior.summary;
     }
 
-    const voterKeys = new Set<string>();
-    const emails = new Set<string>();
-    for (const row of rows) {
-      const voterKey = row.voter_key.normalize("NFKC").trim().toLocaleLowerCase();
-      const email = row.email?.normalize("NFKC").trim().toLocaleLowerCase();
-      if (voterKeys.has(voterKey)) throw new ApiError(422, "VALIDATION_ERROR", "Duplicate voter_key in the batch");
-      if (email && emails.has(email)) throw new ApiError(422, "VALIDATION_ERROR", "Duplicate email in the batch");
-      voterKeys.add(voterKey);
-      if (email) emails.add(email);
-    }
+    const phones = new Set<string>();
+    const normalizedRows = rows.map((row) => {
+      const phone = normalizePhone(row.phone);
+      if (!phone) throw new ApiError(422, "VALIDATION_ERROR", "Every voter must have a valid phone number");
+      if (phones.has(phone)) throw new ApiError(422, "VALIDATION_ERROR", "Duplicate phone number in the batch");
+      phones.add(phone);
+      return { phone, displayName: row.display_name?.trim() || null };
+    });
 
     await tx.eligibleVoter.createMany({
-      data: rows.map((row) => ({
+      data: normalizedRows.map((row) => ({
         electionId,
-        voterKey: row.voter_key.normalize("NFKC").trim().toLocaleLowerCase(),
-        email: row.email ? row.email.normalize("NFKC").trim().toLocaleLowerCase() : null,
-        displayName: row.display_name?.trim() || null,
+        voterKey: row.phone,
+        phone: row.phone,
+        displayName: row.displayName,
       })),
       skipDuplicates: false,
     });
 
-    const summary = { accepted: rows.length, rejected: 0, errors: [] };
+    const summary = { accepted: normalizedRows.length, rejected: 0, errors: [] };
     await tx.importBatch.create({
       data: { electionId, batchKey, digest, summary },
     });
-    await tx.election.update({ where: { id: electionId }, data: { eligibleCount: { increment: rows.length } } });
+    await tx.election.update({ where: { id: electionId }, data: { eligibleCount: { increment: normalizedRows.length } } });
     return summary;
   }, { timeout: 2500, maxWait: 500 });
 }

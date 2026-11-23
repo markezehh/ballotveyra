@@ -6,8 +6,7 @@ import { apiRequest } from "@/lib/api";
 
 type Voter = {
   id: string;
-  voterKey: string;
-  email: string | null;
+  phone: string | null;
   displayName: string | null;
   redeemed: boolean;
   tokenDigest: string | null;
@@ -69,18 +68,14 @@ export default function ManageVotersPage() {
         { method: "POST" }
       );
 
-      await navigator.clipboard?.writeText(result.invitationUrl);
       setElections((current) => current.map((item) => item.id === election.id
         ? { ...item, voters: item.voters.map((candidate) => candidate.id === voter.id ? { ...candidate, tokenDigest: "issued" } : candidate) }
         : item
       ));
 
-      const email = voter.email ?? voter.voterKey;
-      const subject = encodeURIComponent(`Invitation: ${election.title}`);
-      const body = encodeURIComponent(`You are invited to vote. Open this secure link: ${result.invitationUrl}`);
-      setStatus(`Invitation ready for ${email} and copied to the clipboard.`);
-
-      window.location.href = `mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`;
+      const body = encodeURIComponent(`You are invited to vote in ${election.title}. Open this secure link: ${result.invitationUrl}`);
+      setStatus(`SMS invitation ready for ${voter.phone}. Send it from your messaging app.`);
+      window.location.assign(`sms:${voter.phone}?body=${body}`);
     } catch (caught) {
       setStatus(caught instanceof Error ? caught.message : "Unable to invite voter");
     } finally {
@@ -92,7 +87,7 @@ export default function ManageVotersPage() {
     setInvitingElectionId(election.id);
     setStatus("");
     try {
-      const result = await apiRequest<{ invited: number; invitations: Array<{ voterId: string; email: string | null; invitationUrl: string }> }>(
+      const result = await apiRequest<{ invited: number; invitations: Array<{ voterId: string; phone: string | null; invitationUrl: string }> }>(
         `/api/elections/${election.id}/voters/invite-all`,
         { method: "POST" }
       );
@@ -108,7 +103,7 @@ export default function ManageVotersPage() {
           }
         : item
      ));
-      setStatus(`${result.invited} voter invitation${result.invited === 1 ? "" : "s"} generated for ${election.title}.`);
+      setStatus(`${result.invited} SMS invitation link${result.invited === 1 ? "" : "s"} generated for ${election.title}.`);
     } catch (caught) {
       setStatus(caught instanceof Error ? caught.message : "Unable to invite voters");
     } finally {
@@ -153,7 +148,7 @@ export default function ManageVotersPage() {
                   </span>
                   <button
                     type="button"
-                    disabled={invitingElectionId === election.id || !election.voters?.some((voter) => !voter.redeemed)}
+                    disabled={invitingElectionId === election.id || !election.voters?.some((voter) => !voter.redeemed && Boolean(voter.phone))}
                     onClick={() => void inviteAll(election)}
                     className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#1aa79a] px-4 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
                   >
@@ -172,7 +167,7 @@ export default function ManageVotersPage() {
                   <thead className="border-b border-[#10243f]/8 text-xs uppercase tracking-[0.08em] text-[#8793a1]">
                     <tr>
                       <th className="px-5 py-4 font-bold">Voter</th>
-                      <th className="px-5 py-4 font-bold">Email</th>
+                      <th className="px-5 py-4 font-bold">Phone number</th>
                       <th className="px-5 py-4 font-bold">Status</th>
                       <th className="px-5 py-4 text-right font-bold">Action</th>
                     </tr>
@@ -181,10 +176,10 @@ export default function ManageVotersPage() {
                     {election.voters?.length ? election.voters.map((voter) => (
                       <tr key={voter.id} className="border-b border-[#10243f]/6 last:border-0">
                         <td className="px-5 py-4 font-bold text-[#10243f]">
-                          {voter.displayName || voter.email || voter.voterKey}
+                          {voter.displayName || voter.phone || "Unnamed voter"}
                         </td>
                         <td className="px-5 py-4 text-sm text-[#617083]">
-                          {voter.email || "—"}
+                          {voter.phone || "Phone number required"}
                         </td>
                         <td className="px-5 py-4">
                           <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${voter.redeemed ? "bg-[#edf0f3] text-[#617083]" : voter.tokenDigest ? "bg-[#edf8f6] text-[#13877d]" : "bg-[#fff5df] text-[#9a7021]"}`}>
@@ -194,7 +189,7 @@ export default function ManageVotersPage() {
                         <td className="px-5 py-4 text-right">
                           <button
                             type="button"
-                            disabled={invitingId === voter.id || voter.redeemed}
+                            disabled={invitingId === voter.id || voter.redeemed || !voter.phone}
                             onClick={() => void inviteVoter(election, voter)}
                             className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#10243f] px-4 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
                           >
@@ -203,7 +198,7 @@ export default function ManageVotersPage() {
                                 <span aria-hidden="true" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
                                 Inviting…
                               </>
-                            ) : voter.redeemed ? "Voted" : "Invite voter"}
+                            ) : voter.redeemed ? "Voted" : voter.phone ? "Invite by SMS" : "No phone number"}
                           </button>
                         </td>
                       </tr>

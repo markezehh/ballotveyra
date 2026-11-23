@@ -110,7 +110,7 @@ model EligibleVoter {
   id          String   @id @default(cuid())
   electionId  String
   voterKey    String
-  email       String?
+  phone       String?  @db.VarChar(32)
   displayName String?
   tokenDigest String?  @unique
   keyVersion  Int?
@@ -118,7 +118,7 @@ model EligibleVoter {
   election    Election @relation(fields: [electionId], references: [id], onDelete: Restrict)
 
   @@unique([electionId, voterKey])
-  @@unique([electionId, email])
+  @@unique([electionId, phone])
   @@index([electionId, id])
   @@map("EligibleVoter")
 }

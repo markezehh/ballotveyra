@@ -14,6 +14,13 @@ export const normalizedEmail = z
   .email()
   .transform((value) => value.normalize("NFKC").toLocaleLowerCase());
 
+export const normalizedPhone = z
+  .string()
+  .trim()
+  .min(1)
+  .max(32)
+  .transform((value) => value.normalize("NFKC"));
+
 export const createWorkspaceSchema = z.object({
   name: z.string().trim().min(2).max(120),
   slug: z.string().trim().min(2).max(80).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
@@ -32,8 +39,7 @@ export const createElectionSchema = z.object({
 }, { message: "Closing time must be after opening time", path: ["closesAt"] });
 
 export const importRowSchema = z.object({
-  voter_key: normalizedVoterKey,
-  email: z.union([z.string().trim().max(254).email().transform((value) => value.normalize("NFKC").toLocaleLowerCase()), z.literal("")]).optional(),
+  phone: normalizedPhone,
   display_name: z.string().trim().max(120).optional(),
 });
 

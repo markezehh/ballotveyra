@@ -1,4 +1,5 @@
 import { prisma } from "../db.js";
+import { normalizePhone } from "../phone.js";
 import { logService } from "./logger.js";
 
 logService("roster", "service loaded");
@@ -24,37 +25,38 @@ export async function importVoters(electionId, organizerId, rows) {
   }
   if (election.status !== "DRAFT") throw error(409, "CONFLICT", "The roster is locked after activation");
 
-  const keys = new Set();
-  const emails = new Set();
-  const normalizedRows = [];
-  for (const row of rows) {
-    const voterKey = String(row.voterKey ?? row.voter_key ?? "").normalize("NFKC").trim().toLowerCase();
-    const email = row.email ? String(row.email).normalize("NFKC").trim().toLowerCase() : voterKey;
-    if (!voterKey || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      throw error(422, "VALIDATION_ERROR", "Every voter must have a valid email address");
+  const phones = new Set();
+  const normalizedRows = rows.map((row) => {
+    const phone = normalizePhone(row?.phone);
+    if (!phone) {
+      throw error(422, "VALIDATION_ERROR", "Every voter must have a valid phone number");
     }
-    if (keys.has(voterKey) || emails.has(email)) {
-      throw error(422, "VALIDATION_ERROR", "Voter keys and email addresses must be unique within the import");
+    if (phones.has(phone)) {
+      throw error(422, "VALIDATION_ERROR", "Phone numbers must be unique within the import");
     }
-    keys.add(voterKey);
-    emails.add(email);
-    normalizedRows.push({
+    phones.add(phone);
+
+    const displayName = row.displayName ? String(row.displayName).normalize("NFKC").trim() : null;
+    if (displayName && displayName.length > 120) {
+      throw error(422, "VALIDATION_ERROR", "Voter names must be at most 120 characters");
+    }
+    return {
       electionId,
-      voterKey,
-      email,
-      displayName: row.displayName ? String(row.displayName).trim() : email.split("@")[0],
-    });
-  }
+      voterKey: phone,
+      phone,
+      displayName,
+    };
+  });
 
   let accepted = 0;
   await prisma.$transaction(async (tx) => {
     const existing = await tx.eligibleVoter.findMany({
       where: { electionId },
-      select: { voterKey: true, email: true },
+      select: { voterKey: true, phone: true },
     });
     const existingKeys = new Set(existing.map((voter) => voter.voterKey));
-    const existingEmails = new Set(existing.map((voter) => voter.email).filter(Boolean));
-    const newRows = normalizedRows.filter((row) => !existingKeys.has(row.voterKey) && !existingEmails.has(row.email));
+    const existingPhones = new Set(existing.map((voter) => voter.phone).filter(Boolean));
+    const newRows = normalizedRows.filter((row) => !existingKeys.has(row.voterKey) && !existingPhones.has(row.phone));
 
     if (newRows.length) {
       await tx.eligibleVoter.createMany({ data: newRows, skipDuplicates: true });

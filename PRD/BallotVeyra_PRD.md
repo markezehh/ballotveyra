@@ -62,9 +62,9 @@ Count valid ballots by option. The highest nonzero count wins. Report all joint 
 
 ## 5. Voter import and invitation delivery
 
-- Provide a CSV template with required voter_key and optional email and display_name. Normalize voter_key with trim and case folding. Validate optional email and require unique nonempty normalized emails per election. Reject duplicate keys or emails within a file or across the roster. Enforce string lengths, safe CSV handling, 200,000 total voters per election, and bounded upload bodies.
+- Import voters by required phone number and optional display_name. Preserve the entered phone text after trimming outer whitespace and require unique numbers per election. Reject duplicate numbers within a file or across the roster. Enforce string lengths, safe CSV handling, 200,000 total voters per election, and bounded upload bodies.
 - Import in the browser in batches of up to 1,000 rows. Show a preview and present each batch's accepted count and row errors. Each batch uses a client-generated idempotency key and a canonical payload digest. Persist its result with its inserts in one transaction. The same key and payload returns the prior result. Changed payload under the same key returns 409. Exclude concurrent draft edits and activation using an election row lock for each batch. Let the organizer correct and retry failed rows. Use cursor pagination for roster reads.
-- After activation, issue links in explicitly requested batches of up to 1,000 selected voters. Generate 32 CSPRNG bytes per token and encode using base64url. Store only a keyed HMAC digest and key version. Keep keys server-side. Deliver raw URLs once as a no-store CSV attachment under an authorized session. Files include voter_key, email when supplied, and invite_url. Escape spreadsheet formulas in user-supplied CSV fields.
+- After activation, issue links in explicitly requested batches of up to 1,000 selected voters. Generate 32 CSPRNG bytes per token and encode using base64url. Store only a keyed HMAC digest and key version. Keep keys server-side. Deliver raw URLs once as a no-store CSV attachment under an authorized session. Files include phone and invite_url. Escape spreadsheet formulas in user-supplied CSV fields.
 - A new link replaces the prior link for an unredeemed voter. A download failure may be recovered by explicitly reissuing links. Never disclose tokens again from storage. Audit batch counts and replacements without logging credentials. Enforce a per-voter row lock so redemption and replacement cannot both succeed with the old credential.
 - Generate links as /vote/[slug]#token=TOKEN to keep credentials out of request URLs. The client reads the fragment, removes it from history, and submits the token in the body to the same-origin session endpoint. That endpoint validates the token and establishes a short-lived, signed, Secure, HttpOnly, SameSite cookie bound to the election and current digest. Keep the invitation valid through the election window and permit re-entry from the original link until redeemed or replaced. Link checks and previews never redeem eligibility.
 - Manual invitation distribution is the default. The organizer must distribute each link privately. Treat a link as a bearer credential. Forwarding can transfer the ability to vote.
@@ -184,7 +184,7 @@ model EligibleVoter {
   id          String   @id @default(uuid()) @db.Uuid
   electionId  String   @db.Uuid
   voterKey    String   @db.VarChar(120)
-  email       String?  @db.VarChar(254)
+  phone       String?  @db.VarChar(16)
   displayName String?  @db.VarChar(120)
   tokenDigest String?  @unique @db.VarChar(64)
   keyVersion  Int?
@@ -192,7 +192,7 @@ model EligibleVoter {
   election    Election @relation(fields: [electionId], references: [id], onDelete: Restrict)
 
   @@unique([electionId, voterKey])
-  @@unique([electionId, email])
+  @@unique([electionId, phone])
   @@index([electionId, id])
 }
 
