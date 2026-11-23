@@ -60,9 +60,9 @@ export function VoterExperience() {
   const closingRemainingMs = Number.isFinite(closesAtTime) ? closesAtTime - now : 0;
   const votingNotOpen = remainingMs > 0;
   const votingClosed =
-    election?.status === "CLOSED"
-    // election?.status === "PUBLISHED" ||
-    // (election?.status === "SCHEDULED" && Number.isFinite(closesAtTime) && closingRemainingMs <= 0);
+    election?.status === "CLOSED" ||
+    election?.status === "PUBLISHED" ||
+    (election?.status === "SCHEDULED" && Number.isFinite(closesAtTime) && closingRemainingMs <= 0);
   const countdown = {
     days: Math.floor(remainingMs / 86_400_000),
     hours: Math.floor((remainingMs % 86_400_000) / 3_600_000),
@@ -136,7 +136,7 @@ export function VoterExperience() {
               )}
 
               <div className="border-b border-[#10243f]/8 pb-5">
-                <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#13877d]">Public demo election</p>
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#13877d]">Private election</p>
                 <h1 className="mt-2 text-2xl font-bold text-[#10243f]">{election.title}</h1>
                 {election.description && <p className="mt-2 text-sm text-[#8793a1]">{election.description}</p>}
                 <p className="mt-2 text-sm text-[#8793a1]">{election.workspace.name} · {election.timeZone}</p>
