@@ -32,9 +32,14 @@ export function VoterExperience() {
     apiRequest<{ elections: Election[] }>("/api/public/elections")
       .then(({ elections }) => {
         setElections(elections);
-        console.log('Fetched elections:', elections);
+        console.log('Elections:',elections)
         const hashSlug = new URLSearchParams(window.location.search).get("election");
-        const preferred = elections.find((election) => election.slug === hashSlug) ?? elections[0];
+        const scheduledElections = elections.filter((election) => election.status === "SCHEDULED");
+        const preferred =
+          scheduledElections.find((election) => election.slug === hashSlug) ??
+          scheduledElections[0] ??
+          elections.find((election) => election.slug === hashSlug) ??
+          elections[0];
         if (preferred) setSelectedElectionSlug(preferred.slug);
       })
       .catch((caught) => setError(caught instanceof Error ? caught.message : "Unable to load elections"))
@@ -47,13 +52,17 @@ export function VoterExperience() {
     return () => window.clearInterval(timer);
   }, []);
 
+  const scheduledElections = elections.filter((item) => item.status === "SCHEDULED");
   const election = elections.find((item) => item.slug === selectedElectionSlug);
   const opensAtTime = election?.opensAt ? new Date(election.opensAt).getTime() : Number.NaN;
   const closesAtTime = election?.closesAt ? new Date(election.closesAt).getTime() : Number.NaN;
   const remainingMs = Number.isFinite(opensAtTime) ? opensAtTime - now : 0;
   const closingRemainingMs = Number.isFinite(closesAtTime) ? closesAtTime - now : 0;
   const votingNotOpen = remainingMs > 0;
-  const votingClosed = Number.isFinite(closesAtTime) && closingRemainingMs <= 0;
+  const votingClosed =
+    election?.status === "CLOSED"
+    // election?.status === "PUBLISHED" ||
+    // (election?.status === "SCHEDULED" && Number.isFinite(closesAtTime) && closingRemainingMs <= 0);
   const countdown = {
     days: Math.floor(remainingMs / 86_400_000),
     hours: Math.floor((remainingMs % 86_400_000) / 3_600_000),
@@ -115,14 +124,13 @@ export function VoterExperience() {
             <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">No active real elections are available.</p>
           ) : (
             <>
-              {elections.length > 1 && (
+              {scheduledElections.length > 1 && (
                 <label className="mb-5 block">
                   <span className="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-[#8793a1]">Election</span>
                   <select value={selectedElectionSlug} onChange={(event) => { setSelectedElectionSlug(event.target.value); setSelected(""); setStep("ballot"); }} className="h-11 w-full rounded-lg border border-[#10243f]/15 px-3 text-sm font-bold text-[#10243f]">
-                    {elections.map((item) =>{
-                        if(item.status !=='SCHEDULED') return null;
-                        return<option key={item.id} value={item.slug}>{item.title}</option>}
-                         )}
+                    {scheduledElections.map((item) => (
+                      <option key={item.id} value={item.slug}>{item.title}</option>
+                    ))}
                   </select>
                 </label>
               )}
