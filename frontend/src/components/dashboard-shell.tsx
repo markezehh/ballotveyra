@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Suspense } from "react";
 import { BrandMark } from "./brand";
 import { apiRequest } from "@/lib/api";
 
@@ -59,6 +60,57 @@ function Icon({ name }: { name: string }) {
 	);
 }
 
+function DashboardNavigationLinks({
+	pathname,
+	workspaceSlug,
+}: {
+	pathname: string | null;
+	workspaceSlug: string;
+}) {
+	function isActiveItem(label: string, href: string) {
+		if (!pathname) return false;
+		if (label === "Overview") return pathname === "/dashboard";
+		if (label === "Elections") return pathname.startsWith("/dashboard/elections");
+		if (label === "Manage Voters") return pathname.startsWith("/dashboard/voters");
+		if (label === "Members") return pathname === `/workspaces/${workspaceSlug}/members` || pathname.startsWith("/workspaces/");
+		if (label === "Pricing") return pathname === "/pricing";
+		return pathname === href;
+	}
+
+	return (
+		<nav className="mt-8 space-y-1" aria-label="Dashboard navigation">
+			{nav.map(([label, href, icon]) => (
+				<Link
+					key={label}
+					href={
+						label === "Members"
+							? `/workspaces/${workspaceSlug}/members`
+							: href
+					}
+					className={`flex h-11 items-center gap-3 rounded-lg px-3 text-sm font-semibold transition-colors hover:bg-[#edf4f3] hover:text-[#10243f] ${
+						isActiveItem(label, href)
+							? "bg-[#dfeae7] font-bold text-[#10243f]"
+							: "text-[#617083]"
+					}`}
+					aria-current={isActiveItem(label, href) ? "page" : undefined}
+				>
+					<Icon name={icon} />
+					{label}
+				</Link>
+			))}
+		</nav>
+	);
+}
+
+function DashboardNavigation({ workspaceSlug }: { workspaceSlug: string }) {
+	return (
+		<DashboardNavigationLinks
+			pathname={usePathname()}
+			workspaceSlug={workspaceSlug}
+		/>
+	);
+}
+
 export function DashboardShell({
 	children,
 	title,
@@ -70,7 +122,6 @@ export function DashboardShell({
 	account?: any;
 	workspace?: any;
 }) {
-	const pathname = usePathname();
 	const name = account
 		? `${account.firstName ?? ""} ${account.lastName ?? ""}`.trim()
 		: "";
@@ -84,15 +135,6 @@ export function DashboardShell({
 			.toUpperCase() || "BV";
 	const workspaceName = workspace?.name ?? "My Workspace";
 	const workspaceSlug = workspace?.slug ?? "northbridge";
-
-	function isActiveItem(label: string, href: string) {
-		if (label === "Overview") return pathname === "/dashboard";
-		if (label === "Elections") return pathname.startsWith("/dashboard/elections");
-		if (label === "Manage Voters") return pathname.startsWith("/dashboard/voters");
-		if (label === "Members") return pathname === `/workspaces/${workspaceSlug}/members` || pathname.startsWith("/workspaces/");
-		if (label === "Pricing") return pathname === "/pricing";
-		return pathname === href;
-	}
 
 	async function logout() {
 		await apiRequest<{ ok: boolean }>("/api/auth/logout", {
@@ -115,30 +157,16 @@ export function DashboardShell({
 						</span>
 					</Link>
 				</div>
-				<nav
-					className="mt-8 space-y-1"
-					aria-label="Dashboard navigation"
+				<Suspense
+					fallback={
+						<DashboardNavigationLinks
+							pathname={null}
+							workspaceSlug={workspaceSlug}
+						/>
+					}
 				>
-					{nav.map(([label, href, icon]) => (
-						<Link
-							key={label}
-							href={
-								label === "Members"
-									? `/workspaces/${workspaceSlug}/members`
-									: href
-							}
-							className={`flex h-11 items-center gap-3 rounded-lg px-3 text-sm font-semibold transition-colors hover:bg-[#edf4f3] hover:text-[#10243f] ${
-								isActiveItem(label, href)
-									? "bg-[#dfeae7] font-bold text-[#10243f]"
-									: "text-[#617083]"
-							}`}
-							aria-current={isActiveItem(label, href) ? "page" : undefined}
-						>
-							<Icon name={icon} />
-							{label}
-						</Link>
-					))}
-				</nav>
+					<DashboardNavigation workspaceSlug={workspaceSlug} />
+				</Suspense>
 				<button
 					type="button"
 					onClick={logout}

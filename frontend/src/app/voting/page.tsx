@@ -26,7 +26,7 @@ export function VoterExperience() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [now, setNow] = useState(() => Date.now());
+  const [now, setNow] = useState(0);
 
   useEffect(() => {
     apiRequest<{ elections: Election[] }>("/api/public/elections")
@@ -42,6 +42,7 @@ export function VoterExperience() {
   }, []);
 
   useEffect(() => {
+    setNow(Date.now());
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
