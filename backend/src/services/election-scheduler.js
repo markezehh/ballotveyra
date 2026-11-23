@@ -1,7 +1,7 @@
 import { prisma } from "../db.js";
 import { logService } from "./logger.js";
 
-const CHECK_INTERVAL_MS = 2 * 60 * 1000;
+const CHECK_INTERVAL_MS = 20 * 60 * 1000;
 let checkInProgress = false;
 
 export async function closeExpiredElections(now = new Date()) {
