@@ -851,4 +851,11 @@ app.use((req, res) => {
 
 createServer(app).listen(port, host, () => {
   console.log(`Server running at http://${host}:${port}/`);
+  import("./src/services/election-scheduler.js")
+    .then(({ startElectionCloseScheduler }) => startElectionCloseScheduler())
+    .catch((error) => {
+      console.error("[ELECTION SCHEDULER] Failed to start", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
 });
