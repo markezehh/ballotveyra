@@ -29,8 +29,10 @@ export default function TermsPage() {
           <section>
             <h2 className="text-xl font-bold text-[#10243f]">Bearer invitations</h2>
             <p className="mt-3 leading-7">
-              An invitation link grants the ability to submit one ballot. It should
-              be distributed only to the intended voter and kept confidential.
+              An invitation link can authorize ballots for one or more elections in
+              the voter’s workspace. Selected ballots are submitted together, and
+              the link cannot be reused. It should be distributed only to the
+              intended voter and kept confidential.
             </p>
           </section>
           <section>

@@ -7,6 +7,32 @@ const app = express();
 
 const host = process.env.HOST ?? "0.0.0.0";
 const port = Number(process.env.PORT ?? "3001");
+const latestInviteKey = () => {
+  let version = 0;
+  let secret = "";
+  for (const entry of String(process.env.INVITE_HMAC_KEYS ?? "").split(",")) {
+    const separator = entry.indexOf(":");
+    if (separator < 1) continue;
+    const candidateVersion = Number(entry.slice(0, separator));
+    const candidateSecret = entry.slice(separator + 1);
+    if (Number.isInteger(candidateVersion) && candidateVersion > version && candidateSecret.length >= 32) {
+      version = candidateVersion;
+      secret = candidateSecret;
+    }
+  }
+  return version ? { version, secret } : null;
+};
+const logRouteError = (route, error) => {
+  const details = {
+    name: error instanceof Error ? error.name : typeof error,
+    message: error instanceof Error ? error.message : String(error),
+    status: error && typeof error === "object" && "status" in error ? error.status : undefined,
+    code: error && typeof error === "object" && "code" in error ? error.code : undefined,
+    meta: error && typeof error === "object" && "meta" in error ? error.meta : undefined,
+    stack: error instanceof Error ? error.stack : undefined,
+  };
+  console.error(`[${route}] Request failed`, details);
+};
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:3001",
@@ -213,6 +239,7 @@ app.get("/api/workspaces", async (req, res) => {
     const workspaces = await listWorkspaces(account.id);
     res.json({ workspaces });
   } catch (error) {
+    logRouteError("GET /api/workspaces", error);
     const { toErrorResponse } = await import("./src/errors.js");
     const response = toErrorResponse(error);
     res.status(response.status).json(response.body);
@@ -241,6 +268,7 @@ app.get("/api/elections", async (req, res) => {
     const elections = await listElections(account.id);
     res.json({ elections });
   } catch (error) {
+    logRouteError("GET /api/elections", error);
     const { toErrorResponse } = await import("./src/errors.js");
     const response = toErrorResponse(error);
     res.status(response.status).json(response.body);
@@ -398,33 +426,40 @@ app.post("/api/elections/:id/voters/:voterId/invite", async (req, res) => {
     const voter = election.voters[0];
     if (!voter) return res.status(404).json({ code: "NOT_FOUND", message: "Eligible voter not found" });
     if (voter.redeemed) return res.status(409).json({ code: "CONFLICT", message: "This voter has already submitted a ballot" });
-    let latestVersion = 0;
-    let latestSecret = "";
-    for (const entry of String(process.env.INVITE_HMAC_KEYS ?? "").split(",")) {
-      const separator = entry.indexOf(":");
-      if (separator < 1) continue;
-      const version = Number(entry.slice(0, separator));
-      const secret = entry.slice(separator + 1);
-      if (Number.isInteger(version) && version > latestVersion && secret.length >= 32) {
-        latestVersion = version;
-        latestSecret = secret;
-      }
-    }
-    if (!latestSecret) {
+    const inviteKey = latestInviteKey();
+    if (!inviteKey) {
       return res.status(500).json({ code: "CONFIGURATION_ERROR", message: "INVITE_HMAC_KEYS are not configured" });
     }
 
     const rawToken = randomBytes(32).toString("base64url");
-    const tokenDigest = createHmac("sha256", latestSecret).update(rawToken).digest("hex");
+    const tokenDigest = createHmac("sha256", inviteKey.secret).update(rawToken).digest("hex");
 
-    await prisma.eligibleVoter.update({
-      where: { id: voter.id },
-      data: { tokenDigest, keyVersion: latestVersion, redeemed: false },
+    const workspace = await prisma.workspace.findUnique({ where: { id: election.workspaceId } });
+    if (!workspace) return res.status(404).json({ code: "NOT_FOUND", message: "Workspace not found" });
+    const workspaceElectionIds = (await prisma.election.findMany({
+      where: { workspaceId: workspace.id },
+      select: { id: true },
+    })).map(({ id }) => id);
+    await prisma.$transaction(async (tx) => {
+      await tx.eligibleVoter.updateMany({
+        where: { electionId: { in: workspaceElectionIds }, voterKey: voter.voterKey },
+        data: { tokenDigest: null, keyVersion: null },
+      });
+      await tx.workspaceInvite.upsert({
+        where: { workspaceId_voterKey: { workspaceId: workspace.id, voterKey: voter.voterKey } },
+        create: {
+          workspaceId: workspace.id,
+          voterKey: voter.voterKey,
+          tokenDigest,
+          keyVersion: inviteKey.version,
+        },
+        update: { tokenDigest, keyVersion: inviteKey.version },
+      });
     });
 
     const requestOrigin = typeof req.headers.origin === "string" ? req.headers.origin : "";
     const appOrigin = process.env.APP_ORIGIN || (allowedOrigins.includes(requestOrigin) ? requestOrigin : "https://ballotveyra.vercel.app");
-    const invitationUrl = `${appOrigin.replace(/\/$/, "")}/vote/${encodeURIComponent(election.slug)}#token=${rawToken}`;
+    const invitationUrl = `${appOrigin.replace(/\/$/, "")}/vote/${encodeURIComponent(workspace.slug)}#token=${rawToken}`;
 
     res.status(201).json({ invitationUrl, voterId: voter.id });
   } catch (error) {
@@ -453,37 +488,46 @@ app.post("/api/elections/:id/voters/invite-all", async (req, res) => {
       return res.status(403).json({ code: "FORBIDDEN", message: "You do not have permission for this action" });
     }
 
-    let latestVersion = 0;
-    let latestSecret = "";
-    for (const entry of String(process.env.INVITE_HMAC_KEYS ?? "").split(",")) {
-      const separator = entry.indexOf(":");
-      if (separator < 1) continue;
-      const version = Number(entry.slice(0, separator));
-      const secret = entry.slice(separator + 1);
-      if (Number.isInteger(version) && version > latestVersion && secret.length >= 32) {
-        latestVersion = version;
-        latestSecret = secret;
-      }
-    }
-    if (!latestSecret) {
+    const inviteKey = latestInviteKey();
+    if (!inviteKey) {
       return res.status(500).json({ code: "CONFIGURATION_ERROR", message: "INVITE_HMAC_KEYS are not configured" });
     }
 
     const requestOrigin = typeof req.headers.origin === "string" ? req.headers.origin : "";
     const appOrigin = process.env.APP_ORIGIN || (allowedOrigins.includes(requestOrigin) ? requestOrigin : "https://ballotveyra.vercel.app");
+    const workspace = await prisma.workspace.findUnique({ where: { id: election.workspaceId } });
+    if (!workspace) return res.status(404).json({ code: "NOT_FOUND", message: "Workspace not found" });
+    const workspaceElectionIds = (await prisma.election.findMany({
+      where: { workspaceId: workspace.id },
+      select: { id: true },
+    })).map(({ id }) => id);
+    const votersByKey = new Map();
+    for (const voter of election.voters) {
+      if (!votersByKey.has(voter.voterKey)) votersByKey.set(voter.voterKey, voter);
+    }
 
     const invitations = await prisma.$transaction(async (tx) => {
       const issued = [];
-      for (const voter of election.voters) {
+      for (const voter of votersByKey.values()) {
         const rawToken = randomBytes(32).toString("base64url");
-        const tokenDigest = createHmac("sha256", latestSecret).update(rawToken).digest("hex");
-        await tx.eligibleVoter.update({
-          where: { id: voter.id },
-          data: { tokenDigest, keyVersion: latestVersion, redeemed: false },
+        const tokenDigest = createHmac("sha256", inviteKey.secret).update(rawToken).digest("hex");
+        await tx.eligibleVoter.updateMany({
+          where: { electionId: { in: workspaceElectionIds }, voterKey: voter.voterKey },
+          data: { tokenDigest: null, keyVersion: null },
+        });
+        await tx.workspaceInvite.upsert({
+          where: { workspaceId_voterKey: { workspaceId: workspace.id, voterKey: voter.voterKey } },
+          create: {
+            workspaceId: workspace.id,
+            voterKey: voter.voterKey,
+            tokenDigest,
+            keyVersion: inviteKey.version,
+          },
+          update: { tokenDigest, keyVersion: inviteKey.version },
         });
         issued.push({
           voterId: voter.id,
-          invitationUrl: `${appOrigin.replace(/\/$/, "")}/vote/${encodeURIComponent(election.slug)}#token=${rawToken}`,
+          invitationUrl: `${appOrigin.replace(/\/$/, "")}/vote/${encodeURIComponent(workspace.slug)}#token=${rawToken}`,
         });
       }
       return issued;
@@ -512,6 +556,71 @@ app.get("/api/public/elections", async (req, res) => {
       workspace: { name: election.workspace.name, slug: election.workspace.slug }, options: election.options,
     })) });
   } catch (error) {
+    const { toErrorResponse } = await import("./src/errors.js");
+    const response = toErrorResponse(error);
+    res.status(response.status).json(response.body);
+  }
+});
+
+app.post("/api/public/workspaces/:slug/access", async (req, res) => {
+  try {
+    const rawToken = String(req.body?.token ?? "").trim();
+    if (!rawToken || rawToken.length > 128) {
+      return res.status(404).json({ code: "NOT_FOUND", message: "This invitation is not valid or has already been used" });
+    }
+
+    const digests = [];
+    for (const entry of String(process.env.INVITE_HMAC_KEYS ?? "").split(",")) {
+      const separator = entry.indexOf(":");
+      if (separator < 1) continue;
+      const secret = entry.slice(separator + 1);
+      if (secret.length >= 32) digests.push(createHmac("sha256", secret).update(rawToken).digest("hex"));
+    }
+    if (!digests.length) {
+      return res.status(500).json({ code: "CONFIGURATION_ERROR", message: "INVITE_HMAC_KEYS are not configured" });
+    }
+
+    const { prisma } = await import("./src/db.js");
+    const workspace = await prisma.workspace.findUnique({
+      where: { slug: req.params.slug },
+      select: { id: true, name: true, slug: true },
+    });
+    if (!workspace) return res.status(404).json({ code: "NOT_FOUND", message: "Workspace not found" });
+
+    const invite = await prisma.workspaceInvite.findFirst({
+      where: { workspaceId: workspace.id, tokenDigest: { in: digests } },
+    });
+    if (!invite) {
+      return res.status(404).json({ code: "NOT_FOUND", message: "This invitation is not valid or has already been used" });
+    }
+
+    const voterRows = await prisma.eligibleVoter.findMany({
+      where: {
+        voterKey: invite.voterKey,
+        redeemed: false,
+        election: { workspaceId: workspace.id },
+      },
+      include: { election: { include: { options: { orderBy: { position: "asc" } } } } },
+    });
+    if (!voterRows.length) {
+      return res.status(404).json({ code: "NOT_FOUND", message: "This invitation is not valid or has already been used" });
+    }
+
+    const elections = voterRows.map(({ election }) => ({
+      id: election.id,
+      slug: election.slug,
+      title: election.title,
+      description: election.description,
+      status: election.status,
+      timeZone: election.timeZone,
+      opensAt: election.opensAt,
+      closesAt: election.closesAt,
+      options: election.options,
+    }));
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ workspace, elections });
+  } catch (error) {
+    logRouteError("POST /api/public/workspaces/:slug/access", error);
     const { toErrorResponse } = await import("./src/errors.js");
     const response = toErrorResponse(error);
     res.status(response.status).json(response.body);
@@ -600,6 +709,126 @@ async function assertBallotCapacity(tx, electionId, frozenEligibleCount) {
     throw error;
   }
 }
+
+app.post("/api/public/workspaces/:slug/vote", async (req, res) => {
+  try {
+    const rawToken = String(req.body?.token ?? "").trim();
+    const submittedBallots = req.body?.ballots;
+    if (!rawToken || rawToken.length > 128) {
+      return res.status(404).json({ code: "NOT_FOUND", message: "This invitation is not valid or has already been used" });
+    }
+    if (!Array.isArray(submittedBallots) || submittedBallots.length < 1 || submittedBallots.length > 1000) {
+      return res.status(422).json({ code: "VALIDATION_ERROR", message: "Select at least one election to submit" });
+    }
+    if (submittedBallots.some((ballot) => !ballot || typeof ballot.electionId !== "string" || typeof ballot.optionId !== "string")) {
+      return res.status(422).json({ code: "VALIDATION_ERROR", message: "Select a valid choice for each election" });
+    }
+    const ballots = submittedBallots.map(({ electionId, optionId }) => ({
+      electionId: electionId.trim(),
+      optionId: optionId.trim(),
+    }));
+    if (ballots.some(({ electionId, optionId }) => !electionId || !optionId)
+      || new Set(ballots.map(({ electionId }) => electionId)).size !== ballots.length) {
+      return res.status(422).json({ code: "VALIDATION_ERROR", message: "Select no more than one choice per election" });
+    }
+
+    const digests = [];
+    for (const entry of String(process.env.INVITE_HMAC_KEYS ?? "").split(",")) {
+      const separator = entry.indexOf(":");
+      if (separator < 1) continue;
+      const secret = entry.slice(separator + 1);
+      if (secret.length >= 32) digests.push(createHmac("sha256", secret).update(rawToken).digest("hex"));
+    }
+    if (!digests.length) {
+      return res.status(500).json({ code: "CONFIGURATION_ERROR", message: "INVITE_HMAC_KEYS are not configured" });
+    }
+
+    const { prisma } = await import("./src/db.js");
+    const result = await prisma.$transaction(async (tx) => {
+      const fail = (status, code, message) => {
+        const error = new Error(message);
+        error.status = status;
+        error.code = code;
+        throw error;
+      };
+      const workspace = await tx.workspace.findUnique({
+        where: { slug: req.params.slug },
+        select: { id: true },
+      });
+      if (!workspace) fail(404, "NOT_FOUND", "Workspace not found");
+
+      const invite = await tx.workspaceInvite.findFirst({
+        where: { workspaceId: workspace.id, tokenDigest: { in: digests } },
+      });
+      if (!invite) fail(404, "NOT_FOUND", "This invitation is not valid or has already been used");
+
+      await tx.$queryRaw`SELECT "id" FROM ballotveyra."WorkspaceInvite" WHERE "id" = ${invite.id} FOR UPDATE`;
+      const currentInvite = await tx.workspaceInvite.findUnique({ where: { id: invite.id } });
+      if (!currentInvite || currentInvite.tokenDigest !== invite.tokenDigest) {
+        fail(404, "NOT_FOUND", "This invitation is not valid or has already been used");
+      }
+
+      await tx.$queryRaw`SELECT ev."id" FROM ballotveyra."EligibleVoter" AS ev INNER JOIN ballotveyra."Election" AS e ON e."id" = ev."electionId" WHERE e."workspaceId" = ${workspace.id} AND ev."voterKey" = ${invite.voterKey} FOR UPDATE OF ev`;
+      const voterRows = await tx.eligibleVoter.findMany({
+        where: {
+          voterKey: invite.voterKey,
+          election: { workspaceId: workspace.id },
+        },
+        include: { election: { include: { options: true } } },
+      });
+      const eligibleByElection = new Map(
+        voterRows.filter((voter) => !voter.redeemed).map((voter) => [voter.electionId, voter]),
+      );
+      if (!eligibleByElection.size) fail(404, "NOT_FOUND", "This invitation is not valid or has already been used");
+
+      const dbNow = await tx.$queryRaw`SELECT now() AS now`;
+      const now = dbNow[0]?.now;
+      const selectedVoters = [];
+      for (const ballot of ballots) {
+        const voter = eligibleByElection.get(ballot.electionId);
+        if (!voter) fail(403, "FORBIDDEN", "This invitation cannot vote in one or more selected elections");
+        const election = voter.election;
+        if (election.status !== "SCHEDULED") fail(409, "CONFLICT", `${election.title} is not available for voting`);
+        if (election.opensAt && (!now || now < election.opensAt)) {
+          fail(409, "CONFLICT", `${election.title} has not opened`);
+        }
+        if (election.closesAt && now && now >= election.closesAt) {
+          fail(409, "CONFLICT", `${election.title} has closed`);
+        }
+        if (!election.options.some((option) => option.id === ballot.optionId)) {
+          fail(422, "VALIDATION_ERROR", `Select a valid choice for ${election.title}`);
+        }
+        await assertBallotCapacity(tx, election.id, election.eligibleCount);
+        selectedVoters.push(voter);
+      }
+
+      await tx.ballot.createMany({
+        data: ballots.map(({ electionId, optionId }) => ({
+          id: randomUUID(),
+          electionId,
+          optionId,
+        })),
+      });
+      await tx.eligibleVoter.updateMany({
+        where: { id: { in: voterRows.map((voter) => voter.id) } },
+        data: { tokenDigest: null, keyVersion: null },
+      });
+      await tx.eligibleVoter.updateMany({
+        where: { id: { in: selectedVoters.map((voter) => voter.id) } },
+        data: { redeemed: true },
+      });
+      await tx.workspaceInvite.delete({ where: { id: invite.id } });
+      return { submitted: ballots.length };
+    }, { timeout: 10000, maxWait: 2000, isolationLevel: "Serializable" });
+
+    res.status(201).json({ alreadyRecorded: false, ...result });
+  } catch (error) {
+    logRouteError("POST /api/public/workspaces/:slug/vote", error);
+    const { toErrorResponse } = await import("./src/errors.js");
+    const response = toErrorResponse(error);
+    res.status(response.status).json(response.body);
+  }
+});
 
 app.post("/api/public/elections/:slug/vote", async (req, res) => {
   try {

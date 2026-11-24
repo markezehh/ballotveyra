@@ -99,7 +99,7 @@ export default function ManageVotersPage() {
         : item
       ));
       setInvitationLinks((current) => ({ ...current, [voter.id]: result.invitationUrl }));
-      setStatus(`Voting link generated for ${voter.displayName || voter.phone || "voter"} in ${election.title}.`);
+      setStatus(`Workspace-wide voting link generated for ${voter.displayName || voter.phone || "voter"} from ${election.title}.`);
     } catch (caught) {
       setStatus(caught instanceof Error ? caught.message : "Unable to generate voting link");
     } finally {
@@ -131,7 +131,7 @@ export default function ManageVotersPage() {
           }
         : item
      ));
-      setStatus(`${result.invited} voting link${result.invited === 1 ? "" : "s"} generated for ${election.title}.`);
+      setStatus(`${result.invited} workspace-wide voting link${result.invited === 1 ? "" : "s"} generated from ${election.title}.`);
     } catch (caught) {
       setStatus(caught instanceof Error ? caught.message : "Unable to generate voting links");
     } finally {
@@ -143,7 +143,7 @@ export default function ManageVotersPage() {
     <DashboardShell title="Manage Voters" account={account} workspace={workspace}>
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-[#10243f]">Manage voters</h1>
-        <p className="mt-2 text-sm text-[#8793a1]">View eligible voters by election and generate or copy their secure voting links.</p>
+        <p className="mt-2 text-sm text-[#8793a1]">View eligible voters by election and generate secure workspace-wide links. Each link lets a voter submit choices for their eligible elections together.</p>
       </div>
 
       {status && (

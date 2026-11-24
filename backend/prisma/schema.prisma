@@ -5,6 +5,7 @@ generator client {
 datasource db {
   provider     = "postgresql"
   url          = env("DATABASE_URL")
+  directUrl    = env("DIRECT_URL")
   relationMode = "prisma"
 }
 
@@ -49,9 +50,22 @@ model Workspace {
   createdAt DateTime          @default(now())
   members   WorkspaceMember[]
   elections Election[]
+  invites   WorkspaceInvite[]
   events    AuditEvent[]
 
   @@map("Workspace")
+}
+
+model WorkspaceInvite {
+  id          String    @id @default(cuid())
+  workspaceId String
+  voterKey    String
+  tokenDigest String    @unique
+  keyVersion  Int
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+
+  @@unique([workspaceId, voterKey])
+  @@map("WorkspaceInvite")
 }
 
 model WorkspaceMember {

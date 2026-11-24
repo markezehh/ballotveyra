@@ -25,6 +25,8 @@ Generate the Prisma client, migration, and seed with placeholder values when run
 
 Use a dedicated private `ballotveyra` schema. The migration role owns the schema and migration history. The runtime role receives only the privileges declared in `prisma/migrations/0001_initial/migration.sql`.
 
+Set `schema=ballotveyra` on both `DATABASE_URL` and `DIRECT_URL`. Prisma uses `DATABASE_URL` at runtime and `DIRECT_URL` for migration commands; the datasource also forces runtime queries into `ballotveyra`.
+
 Default Supabase `anon`, `authenticated`, and `PUBLIC` roles must not receive schema access.
 
 ## Commands
