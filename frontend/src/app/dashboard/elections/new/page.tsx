@@ -5,9 +5,30 @@ import { useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { apiRequest } from "@/lib/api";
 
+type BallotChoice = { label: string; image: File | null };
+
+async function uploadChoiceImage(file: File): Promise<string> {
+  const imageForm = new FormData();
+  imageForm.append("file", file);
+  imageForm.append("upload_preset", "igsl_news_uploads");
+
+  const response = await fetch("https://api.cloudinary.com/v1_1/dadvxxgl1/upload", {
+    method: "POST",
+    body: imageForm,
+  });
+  const result = await response.json();
+  if (!response.ok || typeof result.secure_url !== "string") {
+    throw new Error(result.error?.message ?? "Unable to upload candidate image");
+  }
+  return result.secure_url;
+}
+
 export default function NewElectionPage() {
   const router = useRouter();
-  const [choices, setChoices] = useState(["Candidate 1", "Candidate 2"]);
+  const [choices, setChoices] = useState<BallotChoice[]>([
+    { label: "Candidate 1", image: null },
+    { label: "Candidate 2", image: null },
+  ]);
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
   const [account, setAccount] = useState<any>(null);
@@ -31,13 +52,21 @@ export default function NewElectionPage() {
       setStatus("Closing time must be after opening time.");
       return;
     }
-    if (choices.some((choice) => !choice.trim()) || choices.length < 2) {
+    if (choices.some((choice) => !choice.label.trim()) || choices.length < 2) {
       setStatus("Add at least two non-empty ballot choices.");
       return;
     }
     setLoading(true);
     setStatus("");
     try {
+      const options = [];
+      for (const choice of choices) {
+        options.push({
+          label: choice.label,
+          imageUrl: choice.image ? await uploadChoiceImage(choice.image) : undefined,
+        });
+      }
+
       const result = await apiRequest<{ election: { id: string } }>("/api/elections", {
         method: "POST",
         body: JSON.stringify({
@@ -47,7 +76,7 @@ export default function NewElectionPage() {
           timeZone: form.get("timezone"),
           opensAt: opens ? new Date(opens).toISOString() : undefined,
           closesAt: closes ? new Date(closes).toISOString() : undefined,
-          options: choices,
+          options,
         }),
       });
       setStatus(finalStep ? "Election created. Continue with voter setup." : "Election draft saved.");
@@ -71,7 +100,7 @@ export default function NewElectionPage() {
             <div><label htmlFor="description" className="mb-2 block text-sm font-bold text-[#10243f]">Description</label><textarea id="description" name="description" rows={4} placeholder="Describe the purpose and context of this election." className="w-full resize-y rounded-lg border border-[#10243f]/15 p-4 text-sm outline-none focus:border-[#1aa79a]" /></div>
             <div className="grid gap-5 sm:grid-cols-2"><div><label htmlFor="opens" className="mb-2 block text-sm font-bold text-[#10243f]">Opening time</label><input id="opens" name="opens" type="datetime-local" className="h-12 w-full rounded-lg border border-[#10243f]/15 px-3 text-sm outline-none focus:border-[#1aa79a]" /></div><div><label htmlFor="closes" className="mb-2 block text-sm font-bold text-[#10243f]">Closing time</label><input id="closes" name="closes" type="datetime-local" className="h-12 w-full rounded-lg border border-[#10243f]/15 px-3 text-sm outline-none focus:border-[#1aa79a]" /></div></div>
             <div><label htmlFor="timezone" className="mb-2 block text-sm font-bold text-[#10243f]">Election timezone</label><select id="timezone" name="timezone" defaultValue="Africa/Lagos" className="h-12 w-full rounded-lg border border-[#10243f]/15 bg-white px-4 text-sm outline-none focus:border-[#1aa79a]"><option>Africa/Lagos</option><option>UTC</option><option>America/New_York</option><option>Europe/London</option></select></div>
-            <fieldset className="border-t border-[#10243f]/8 pt-6"><legend className="font-bold text-[#10243f]">Ballot choices</legend><p className="mt-1 text-sm text-[#8793a1]">Add 2–50 ordered choices for this election.</p><div className="mt-4 space-y-3">{choices.map((choice, index) => <div key={index} className="flex gap-2"><input aria-label={`Choice ${index + 1}`} value={choice} onChange={(event) => setChoices((current) => current.map((value, i) => i === index ? event.target.value : value))} className="h-12 min-w-0 flex-1 rounded-lg border border-[#10243f]/15 px-4 text-sm" />{choices.length > 2 && <button type="button" aria-label={`Remove choice ${index + 1}`} onClick={() => setChoices((current) => current.filter((_, i) => i !== index))} className="h-12 rounded-lg border border-[#10243f]/15 px-3 text-sm font-bold text-[#9b4d4d]">Remove</button>}</div>)}<button type="button" disabled={choices.length >= 50} onClick={() => setChoices((current) => [...current, ""])} className="h-11 rounded-lg border border-dashed border-[#10243f]/20 px-4 text-sm font-bold text-[#13877d] disabled:opacity-40">+ Add choice</button></div></fieldset>
+            <fieldset className="border-t border-[#10243f]/8 pt-6"><legend className="font-bold text-[#10243f]">Ballot choices</legend><p className="mt-1 text-sm text-[#8793a1]">Add 2–50 ordered choices and an optional candidate image for each.</p><div className="mt-4 space-y-4">{choices.map((choice, index) => <div key={index} className="rounded-lg border border-[#10243f]/8 p-4"><div className="flex gap-2"><input aria-label={`Choice ${index + 1}`} value={choice.label} onChange={(event) => setChoices((current) => current.map((value, i) => i === index ? { ...value, label: event.target.value } : value))} className="h-12 min-w-0 flex-1 rounded-lg border border-[#10243f]/15 px-4 text-sm" />{choices.length > 2 && <button type="button" aria-label={`Remove choice ${index + 1}`} onClick={() => setChoices((current) => current.filter((_, i) => i !== index))} className="h-12 rounded-lg border border-[#10243f]/15 px-3 text-sm font-bold text-[#9b4d4d]">Remove</button>}</div><label className="mt-3 block text-sm font-semibold text-[#617083]"><span className="mb-2 block">Candidate image (optional)</span><input aria-label={`Candidate image for choice ${index + 1}`} type="file" accept="image/*" onChange={(event) => setChoices((current) => current.map((value, i) => i === index ? { ...value, image: event.target.files?.[0] ?? null } : value))} className="block w-full text-sm text-[#8793a1] file:mr-3 file:rounded-lg file:border-0 file:bg-[#edf4f3] file:px-3 file:py-2 file:text-sm file:font-bold file:text-[#13877d]" /></label>{choice.image && <p className="mt-2 text-xs text-[#8793a1]">{choice.image.name}</p>}</div>)}<button type="button" disabled={choices.length >= 50} onClick={() => setChoices((current) => [...current, { label: "", image: null }])} className="h-11 rounded-lg border border-dashed border-[#10243f]/20 px-4 text-sm font-bold text-[#13877d] disabled:opacity-40">+ Add choice</button></div></fieldset>
             {status && <p role="status" className="rounded-lg bg-[#edf4f3] px-4 py-3 text-sm font-bold text-[#4e6478]">{status}</p>}
             <div className="flex justify-end gap-3 border-t border-[#10243f]/8 pt-6"><button type="submit" name="save" disabled={loading} className="h-11 rounded-lg px-4 text-sm font-bold text-[#617083] disabled:opacity-50">{loading ? "Saving…" : "Save draft"}</button><button type="submit" name="continue" disabled={loading} className="h-11 rounded-lg bg-[#1aa79a] px-5 text-sm font-bold text-white disabled:opacity-50">{loading ? "Creating…" : "Continue to voters"}</button></div>
           </form>

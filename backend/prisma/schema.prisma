@@ -97,6 +97,7 @@ model BallotOption {
   electionId  String
   label       String
   description String?
+  imageUrl    String?
   position    Int
   election    Election @relation(fields: [electionId], references: [id], onDelete: Restrict)
   ballots     Ballot[]

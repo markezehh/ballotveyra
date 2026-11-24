@@ -354,9 +354,19 @@ app.get("/api/elections/:id/results", async (req, res) => {
       include: { options: { orderBy: { position: "asc" }, include: { _count: { select: { ballots: true } } } }, voters: true, result: true },
     });
     if (!election) return res.status(404).json({ code: "NOT_FOUND", message: "Election not found" });
-    const options = election.options.map((option) => ({ id: option.id, label: option.label, count: option._count.ballots }));
+    const options = election.options.map((option) => ({ id: option.id, label: option.label, imageUrl: option.imageUrl, count: option._count.ballots }));
     const ballotsCast = options.reduce((sum, option) => sum + option.count, 0);
-    res.json({ tally: election.result?.tally ?? { options, eligibleCount: election.eligibleCount ?? election.voters.length, ballotsCast, turnout: election.eligibleCount ? ballotsCast / election.eligibleCount : 0 } });
+    const storedTally = election.result?.tally;
+    const tally = storedTally ?? { options, eligibleCount: election.eligibleCount ?? election.voters.length, ballotsCast, turnout: election.eligibleCount ? ballotsCast / election.eligibleCount : 0 };
+    const storedOptions = Array.isArray(tally.options) ? tally.options : [];
+    res.json({ tally: {
+      ...tally,
+      options: options.map((option) => ({
+        ...option,
+        ...storedOptions.find((storedOption) => storedOption.id === option.id),
+        imageUrl: option.imageUrl,
+      })),
+    } });
   } catch (error) {
     const { toErrorResponse } = await import("./src/errors.js");
     const response = toErrorResponse(error);

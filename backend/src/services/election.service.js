@@ -49,11 +49,30 @@ export async function createElection(organizerId, workspaceId, input) {
   const timeZone = String(input.timeZone ?? "Africa/Lagos").trim();
   const opensAt = input.opensAt ? new Date(input.opensAt) : null;
   const closesAt = input.closesAt ? new Date(input.closesAt) : null;
-  const options = Array.isArray(input.options) ? input.options.map((option) => String(option).trim()) : [];
+  const options = Array.isArray(input.options) ? input.options.map((option) => ({
+    label: typeof option === "string" ? option.trim() : String(option?.label ?? "").trim(),
+    imageUrl: typeof option === "object" && option !== null && typeof option.imageUrl === "string"
+      ? option.imageUrl.trim()
+      : null,
+  })) : [];
 
   if (title.length < 2 || title.length > 160) throw apiError(422, "VALIDATION_ERROR", "Election title must be 2–160 characters");
   if (opensAt && closesAt && closesAt <= opensAt) throw apiError(422, "VALIDATION_ERROR", "Closing time must be after opening time");
   if (options.length && (options.length < 2 || options.length > 50)) throw apiError(422, "VALIDATION_ERROR", "A ballot requires 2 to 50 options");
+  if (options.some(({ label }) => !label || label.length > 120) || new Set(options.map(({ label }) => label.toLowerCase())).size !== options.length) {
+    throw apiError(422, "VALIDATION_ERROR", "Option labels must be unique and 1–120 characters");
+  }
+  if (options.some(({ imageUrl }) => {
+    if (!imageUrl) return false;
+    try {
+      const url = new URL(imageUrl);
+      return url.protocol !== "https:" || url.hostname !== "res.cloudinary.com";
+    } catch {
+      return true;
+    }
+  })) {
+    throw apiError(422, "VALIDATION_ERROR", "Candidate images must be secure Cloudinary URLs");
+  }
 
   const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } });
   if (!workspace) throw apiError(404, "NOT_FOUND", "Workspace not found");
@@ -69,7 +88,7 @@ export async function createElection(organizerId, workspaceId, input) {
     });
     if (options.length) {
       await tx.ballotOption.createMany({
-        data: options.map((label, position) => ({ electionId: election.id, position, label })),
+        data: options.map(({ label, imageUrl }, position) => ({ electionId: election.id, position, label, imageUrl })),
       });
     }
     await tx.auditEvent.create({

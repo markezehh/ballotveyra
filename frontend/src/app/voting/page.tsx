@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Brand } from "@/components/brand";
 import { apiRequest } from "@/lib/api";
 
-type Option = { id: string; label: string; description: string | null };
+type Option = { id: string; label: string; description: string | null; imageUrl: string | null };
 type Election = {
   id: string;
   slug: string;
@@ -206,6 +206,7 @@ export function VoterExperience() {
                               className={`flex min-h-[76px] md:pr-20 cursor-pointer items-center gap-3 rounded-xl border p-4 ${selected === option.id ? "border-[#1aa79a] bg-[#f4fbf9]" : "border-[#10243f]/12 hover:border-[#10243f]/30"}`}
                             >
                               <input type="radio" name="choice" value={option.id} checked={selected === option.id} onChange={() => setSelected(option.id)} className="h-5 w-5 shrink-0 accent-[#1aa79a]" />
+                              {option.imageUrl && <img src={option.imageUrl} alt={`${option.label} candidate`} className="h-14 w-14 shrink-0 rounded-full object-cover" />}
                               <span className="min-w-0 flex-1">
                                 <span className="block font-bold text-[#10243f]">{option.label}</span>
                                 {option.description && <span className="mt-1 block text-sm leading-5 text-[#7a8794]">{option.description}</span>}
@@ -225,7 +226,10 @@ export function VoterExperience() {
                       <p className="mt-2 text-sm leading-6 text-[#8793a1]">Confirm your choice before submitting. You cannot edit or replace this ballot afterward.</p>
                       <div className="mt-5 rounded-xl border border-[#1aa79a]/30 bg-[#f4fbf9] p-4">
                         <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#13877d]">Your choice</p>
-                        <p className="mt-2 font-bold text-[#10243f]">{election.options.find((option) => option.id === selected)?.label}</p>
+                        <div className="mt-2 flex items-center gap-3">
+                          {election.options.find((option) => option.id === selected)?.imageUrl && <img src={election.options.find((option) => option.id === selected)?.imageUrl ?? ""} alt={`${election.options.find((option) => option.id === selected)?.label ?? "Candidate"} candidate`} className="h-12 w-12 rounded-full object-cover" />}
+                          <p className="font-bold text-[#10243f]">{election.options.find((option) => option.id === selected)?.label}</p>
+                        </div>
                       </div>
                       <button type="button" disabled={submitting} onClick={() => void submitBallot()} className="mt-6 h-12 w-full rounded-lg bg-[#1aa79a] text-sm font-bold text-white disabled:opacity-60">{submitting ? "Submitting…" : "Submit my ballot"}</button>
                       <button type="button" onClick={() => setStep("ballot")} className="mt-3 h-11 w-full rounded-lg text-sm font-bold text-[#617083]">Go back</button>
