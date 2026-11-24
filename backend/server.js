@@ -259,6 +259,7 @@ app.post("/api/elections", async (req, res) => {
     const election = await createElection(account.id, workspace.id, req.body);
     res.status(201).json({ election });
   } catch (error) {
+    console.error("POST /api/elections failed:", error);
     const { toErrorResponse } = await import("./src/errors.js");
     const response = toErrorResponse(error);
     res.status(response.status).json(response.body);
