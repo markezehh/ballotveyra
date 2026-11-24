@@ -1,2 +1,2 @@
 ALTER TABLE ballotveyra."BallotOption"
-  ADD COLUMN "imageUrl" TEXT;
+  ADD COLUMN IF NOT EXISTS "imageUrl" TEXT;

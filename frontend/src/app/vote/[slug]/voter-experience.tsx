@@ -125,7 +125,10 @@ export function VoterExperience() {
                             />
                           )}
                           <span className="min-w-0 flex-1">
-                            <span className="block font-bold text-[#10243f]">{option.label}</span>
+                            <span className="flex items-center gap-2 font-bold text-[#10243f]">
+                              <span>{option.label}</span>
+                              <img src="/fingerprint.png" alt="" className="h-10 w-14 shrink-0 object-contain" />
+                            </span>
                             {option.description && <span className="mt-1 block text-sm leading-5 text-[#7a8794]">{option.description}</span>}
                           </span>
                         </label>
