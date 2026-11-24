@@ -386,8 +386,6 @@ app.post("/api/elections/:id/voters/:voterId/invite", async (req, res) => {
     const voter = election.voters[0];
     if (!voter) return res.status(404).json({ code: "NOT_FOUND", message: "Eligible voter not found" });
     if (voter.redeemed) return res.status(409).json({ code: "CONFLICT", message: "This voter has already submitted a ballot" });
-    if (!voter.phone) return res.status(409).json({ code: "CONFLICT", message: "Add a phone number before inviting this voter" });
-
     let latestVersion = 0;
     let latestSecret = "";
     for (const entry of String(process.env.INVITE_HMAC_KEYS ?? "").split(",")) {
@@ -432,7 +430,7 @@ app.post("/api/elections/:id/voters/invite-all", async (req, res) => {
 
     const election = await prisma.election.findUnique({
       where: { id: req.params.id },
-      include: { voters: { where: { redeemed: false, phone: { not: null } } } },
+      include: { voters: { where: { redeemed: false } } },
     });
     if (!election) return res.status(404).json({ code: "NOT_FOUND", message: "Election not found" });
 
@@ -473,7 +471,6 @@ app.post("/api/elections/:id/voters/invite-all", async (req, res) => {
         });
         issued.push({
           voterId: voter.id,
-          phone: voter.phone,
           invitationUrl: `${appOrigin.replace(/\/$/, "")}/vote/${encodeURIComponent(election.slug)}#token=${rawToken}`,
         });
       }
@@ -530,6 +527,53 @@ app.get("/api/public/elections/:slug", async (req, res) => {
   }
 });
 
+app.post("/api/public/elections/:slug/access", async (req, res) => {
+  try {
+    const rawToken = String(req.body?.token ?? "").trim();
+    if (!rawToken || rawToken.length > 128) {
+      return res.status(404).json({ code: "NOT_FOUND", message: "This invitation is not valid or has already been used" });
+    }
+
+    const digests = [];
+    for (const entry of String(process.env.INVITE_HMAC_KEYS ?? "").split(",")) {
+      const separator = entry.indexOf(":");
+      if (separator < 1) continue;
+      const secret = entry.slice(separator + 1);
+      if (secret.length >= 32) digests.push(createHmac("sha256", secret).update(rawToken).digest("hex"));
+    }
+    if (!digests.length) {
+      return res.status(500).json({ code: "CONFIGURATION_ERROR", message: "INVITE_HMAC_KEYS are not configured" });
+    }
+
+    const { prisma } = await import("./src/db.js");
+    const election = await prisma.election.findUnique({
+      where: { slug: req.params.slug },
+      include: { workspace: true, options: { orderBy: { position: "asc" } } },
+    });
+    if (!election) return res.status(404).json({ code: "NOT_FOUND", message: "Election not found" });
+
+    const voter = await prisma.eligibleVoter.findFirst({
+      where: { electionId: election.id, tokenDigest: { in: digests }, redeemed: false },
+      select: { id: true },
+    });
+    if (!voter) {
+      return res.status(404).json({ code: "NOT_FOUND", message: "This invitation is not valid or has already been used" });
+    }
+
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ election: {
+      id: election.id, slug: election.slug, title: election.title,
+      description: election.description, status: election.status,
+      timeZone: election.timeZone, opensAt: election.opensAt, closesAt: election.closesAt,
+      workspace: { name: election.workspace.name, slug: election.workspace.slug }, options: election.options,
+    } });
+  } catch (error) {
+    const { toErrorResponse } = await import("./src/errors.js");
+    const response = toErrorResponse(error);
+    res.status(response.status).json(response.body);
+  }
+});
+
 async function assertBallotCapacity(tx, electionId, frozenEligibleCount) {
   const eligibleCount = frozenEligibleCount ?? await tx.eligibleVoter.count({ where: { electionId } });
 
@@ -563,6 +607,14 @@ app.post("/api/public/elections/:slug/vote", async (req, res) => {
         throw error;
       }
 
+      const eligibleVoterCount = await tx.eligibleVoter.count({ where: { electionId: election.id } });
+      if (!rawToken && eligibleVoterCount > 0) {
+        const error = new Error("A valid voter invitation is required");
+        error.status = 403;
+        error.code = "FORBIDDEN";
+        throw error;
+      }
+
       if (rawToken) {
         const digests = [];
         for (const entry of String(process.env.INVITE_HMAC_KEYS ?? "").split(",")) {
@@ -589,7 +641,13 @@ app.post("/api/public/elections/:slug/vote", async (req, res) => {
         }
 
         const current = await tx.eligibleVoter.findUnique({ where: { id: voter.id } });
-        if (current?.redeemed) return { alreadyRecorded: true };
+        if (current?.redeemed) {
+          await tx.eligibleVoter.update({
+            where: { id: voter.id },
+            data: { tokenDigest: null, keyVersion: null },
+          });
+          return { alreadyRecorded: true };
+        }
 
         if (election.status !== "SCHEDULED") {
           const error = new Error("Voting is not available");
@@ -622,7 +680,10 @@ app.post("/api/public/elections/:slug/vote", async (req, res) => {
         }
 
         await assertBallotCapacity(tx, election.id, election.eligibleCount);
-        await tx.eligibleVoter.update({ where: { id: voter.id }, data: { redeemed: true } });
+        await tx.eligibleVoter.update({
+          where: { id: voter.id },
+          data: { redeemed: true, tokenDigest: null, keyVersion: null },
+        });
         await tx.ballot.create({
           data: {
             id: createHash("sha256").update(`${rawToken}:${optionId}`).digest("hex").slice(0, 32),

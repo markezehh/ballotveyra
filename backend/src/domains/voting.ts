@@ -17,7 +17,13 @@ export async function redeemBallot(slug: string, rawToken: string, optionId: str
     if (!voter) throw new ApiError(404, "NOT_FOUND", "This invitation is not valid");
     await tx.$queryRaw`SELECT id FROM ballotveyra."EligibleVoter" WHERE id = ${voter.id}::text FOR UPDATE`;
 
-    if (voter.redeemed) return { alreadyRecorded: true };
+    if (voter.redeemed) {
+      await tx.eligibleVoter.update({
+        where: { id: voter.id },
+        data: { tokenDigest: null, keyVersion: null },
+      });
+      return { alreadyRecorded: true };
+    }
     if (election.status !== "SCHEDULED" || !election.opensAt || !election.closesAt) throw new ApiError(409, "CONFLICT", "Voting is not available");
 
     const dbNow = await tx.$queryRaw<Array<{ now: Date }>>`SELECT now() AS now`;
@@ -36,7 +42,7 @@ export async function redeemBallot(slug: string, rawToken: string, optionId: str
 
     await tx.eligibleVoter.update({
       where: { id: voter.id },
-      data: { redeemed: true },
+      data: { redeemed: true, tokenDigest: null, keyVersion: null },
     });
     await tx.ballot.create({
       data: {

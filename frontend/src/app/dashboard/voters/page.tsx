@@ -20,21 +20,36 @@ type Election = {
   voters: Voter[];
 };
 
+type Account = {
+  id: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  emailVerified: boolean;
+};
+
+type Workspace = {
+  id: string;
+  name: string;
+  slug: string;
+  role: string;
+};
+
 export default function ManageVotersPage() {
-  const [account, setAccount] = useState<any>(null);
-  const [workspace, setWorkspace] = useState<any>(null);
+  const [account, setAccount] = useState<Account | null>(null);
+  const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [elections, setElections] = useState<Election[]>([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
   const [invitingId, setInvitingId] = useState("");
   const [invitingElectionId, setInvitingElectionId] = useState("");
+  const [invitationLinks, setInvitationLinks] = useState<Record<string, string>>({});
 
   async function load() {
-    setLoading(true);
     try {
       const [me, workspaces, electionData] = await Promise.all([
-        apiRequest<{ account: any }>("/api/auth/me"),
-        apiRequest<{ workspaces: any[] }>("/api/workspaces"),
+        apiRequest<{ account: Account }>("/api/auth/me"),
+        apiRequest<{ workspaces: Workspace[] }>("/api/workspaces"),
         apiRequest<{ elections: Election[] }>("/api/elections"),
       ]);
 
@@ -56,10 +71,21 @@ export default function ManageVotersPage() {
   }
 
   useEffect(() => {
-    void load();
+    void Promise.resolve().then(load);
   }, []);
 
   async function inviteVoter(election: Election, voter: Voter) {
+    const invitationUrl = invitationLinks[voter.id];
+    if (invitationUrl) {
+      try {
+        await navigator.clipboard.writeText(invitationUrl);
+        setStatus("Voting link copied to clipboard.");
+      } catch {
+        setStatus("Unable to copy the voting link. Check your browser clipboard permissions and try again.");
+      }
+      return;
+    }
+
     setInvitingId(voter.id);
     setStatus("");
     try {
@@ -72,12 +98,10 @@ export default function ManageVotersPage() {
         ? { ...item, voters: item.voters.map((candidate) => candidate.id === voter.id ? { ...candidate, tokenDigest: "issued" } : candidate) }
         : item
       ));
-
-      const body = encodeURIComponent(`You are invited to vote in ${election.title}. Open this secure link: ${result.invitationUrl}`);
-      setStatus(`SMS invitation ready for ${voter.phone}. Send it from your messaging app.`);
-      window.location.assign(`sms:${voter.phone}?body=${body}`);
+      setInvitationLinks((current) => ({ ...current, [voter.id]: result.invitationUrl }));
+      setStatus(`Voting link generated for ${voter.displayName || voter.phone || "voter"} in ${election.title}.`);
     } catch (caught) {
-      setStatus(caught instanceof Error ? caught.message : "Unable to invite voter");
+      setStatus(caught instanceof Error ? caught.message : "Unable to generate voting link");
     } finally {
       setInvitingId("");
     }
@@ -87,11 +111,15 @@ export default function ManageVotersPage() {
     setInvitingElectionId(election.id);
     setStatus("");
     try {
-      const result = await apiRequest<{ invited: number; invitations: Array<{ voterId: string; phone: string | null; invitationUrl: string }> }>(
+      const result = await apiRequest<{ invited: number; invitations: Array<{ voterId: string; invitationUrl: string }> }>(
         `/api/elections/${election.id}/voters/invite-all`,
         { method: "POST" }
       );
 
+      setInvitationLinks((current) => ({
+        ...current,
+        ...Object.fromEntries(result.invitations.map(({ voterId, invitationUrl }) => [voterId, invitationUrl])),
+      }));
       setElections((current) => current.map((item) => item.id === election.id
         ? {
             ...item,
@@ -103,9 +131,9 @@ export default function ManageVotersPage() {
           }
         : item
      ));
-      setStatus(`${result.invited} SMS invitation link${result.invited === 1 ? "" : "s"} generated for ${election.title}.`);
+      setStatus(`${result.invited} voting link${result.invited === 1 ? "" : "s"} generated for ${election.title}.`);
     } catch (caught) {
-      setStatus(caught instanceof Error ? caught.message : "Unable to invite voters");
+      setStatus(caught instanceof Error ? caught.message : "Unable to generate voting links");
     } finally {
       setInvitingElectionId("");
     }
@@ -115,7 +143,7 @@ export default function ManageVotersPage() {
     <DashboardShell title="Manage Voters" account={account} workspace={workspace}>
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-[#10243f]">Manage voters</h1>
-        <p className="mt-2 text-sm text-[#8793a1]">View eligible voters by election and generate a secure invitation.</p>
+        <p className="mt-2 text-sm text-[#8793a1]">View eligible voters by election and generate or copy their secure voting links.</p>
       </div>
 
       {status && (
@@ -148,16 +176,16 @@ export default function ManageVotersPage() {
                   </span>
                   <button
                     type="button"
-                    disabled={invitingElectionId === election.id || !election.voters?.some((voter) => !voter.redeemed && Boolean(voter.phone))}
+                    disabled={invitingElectionId === election.id || !election.voters?.some((voter) => !voter.redeemed)}
                     onClick={() => void inviteAll(election)}
                     className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#1aa79a] px-4 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {invitingElectionId === election.id ? (
                       <>
                         <span aria-hidden="true" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                        Inviting all…
+                        Generating links…
                       </>
-                    ) : "Invite all"}
+                    ) : "Generate all links"}
                   </button>
                 </div>
               </div>
@@ -189,16 +217,16 @@ export default function ManageVotersPage() {
                         <td className="px-5 py-4 text-right">
                           <button
                             type="button"
-                            disabled={invitingId === voter.id || voter.redeemed || !voter.phone}
+                            disabled={invitingId === voter.id || voter.redeemed}
                             onClick={() => void inviteVoter(election, voter)}
                             className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#10243f] px-4 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             {invitingId === voter.id ? (
                               <>
                                 <span aria-hidden="true" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                                Inviting…
+                                Generating…
                               </>
-                            ) : voter.redeemed ? "Voted" : voter.phone ? "Invite by SMS" : "No phone number"}
+                            ) : voter.redeemed ? "Voted" : invitationLinks[voter.id] ? "Copy Link" : "Generate Link"}
                           </button>
                         </td>
                       </tr>
